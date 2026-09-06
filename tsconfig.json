@@ -9,7 +9,8 @@
     "rootDir": ".",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "lib": ["ES2022", "DOM", "WebWorker"]
   },
   "include": ["src/**/*.ts", "cli/**/*.ts"]
 }

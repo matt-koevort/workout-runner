@@ -1,0 +1,10 @@
+{
+  "name": "Workout Runner",
+  "short_name": "Workout Runner",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111317",
+  "theme_color": "#111317",
+  "description": "Private offline-first workout runner",
+  "icons": [{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
