@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workout-runner.local/schemas/cycle.schema.json",
+  "title": "Workout Runner Cycle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "cycleId", "name", "startDate", "lengthWeeks", "weeks", "sessions", "substitutions"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "1.0"},
+    "kind": {"type": "string", "const": "cycle"},
+    "cycleId": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "name": {"type": "string", "minLength": 1},
+    "status": {"type": "string", "enum": ["planned", "active", "complete", "archived"]},
+    "startDate": {"type": "string", "format": "date"},
+    "lengthWeeks": {"type": "integer", "minimum": 1, "maximum": 52},
+    "previousCycle": {"type": ["string", "null"]},
+    "primaryGoal": {"type": "string"},
+    "enduranceGoal": {"type": "string"},
+    "weeks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/week"}},
+    "sessions": {"type": "array", "items": {"$ref": "#/$defs/session"}},
+    "optionalRecovery": {"$ref": "#/$defs/recovery"},
+    "substitutions": {"type": "array", "items": {"$ref": "#/$defs/substitution"}},
+    "progressionRules": {"type": "array", "items": {"type": "string"}},
+    "privacy": {"$ref": "#/$defs/privacy"}
+  },
+  "$defs": {
+    "week": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["weekNumber", "label", "phase"],
+      "properties": {
+        "weekNumber": {"type": "integer", "minimum": 1},
+        "label": {"type": "string"},
+        "phase": {"type": "string", "enum": ["build", "deload", "test", "recovery"]}
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "cycleId", "weekNumber", "sequence", "name", "kind", "blocks", "lineage"],
+      "properties": {
+        "sessionId": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "cycleId": {"type": "string"},
+        "weekNumber": {"type": "integer", "minimum": 1},
+        "sequence": {"type": "integer", "minimum": 1},
+        "name": {"type": "string"},
+        "kind": {"type": "string", "enum": ["strength", "swim", "run", "recovery"]},
+        "targetDurationMinutes": {"type": "integer", "minimum": 1},
+        "blocks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/block"}},
+        "mainLift": {"$ref": "#/$defs/exercise"},
+        "lineage": {"$ref": "#/$defs/lineage"},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockId", "kind", "label", "order", "items"],
+      "properties": {
+        "blockId": {"type": "string"},
+        "kind": {"type": "string", "enum": ["preparation", "main", "accessory", "arm", "finisher", "interval", "cooldown", "optional"]},
+        "label": {"type": "string"},
+        "order": {"type": "integer", "minimum": 1},
+        "items": {"type": "array", "items": {"$ref": "#/$defs/exercise"}},
+        "format": {"type": "string"},
+        "durationMinutes": {"type": "integer", "minimum": 1},
+        "rounds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "exercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exerciseId", "name", "role", "prescription", "progression", "loadBasis"],
+      "properties": {
+        "exerciseId": {"type": "string"},
+        "name": {"type": "string", "minLength": 1},
+        "role": {"type": "string", "enum": ["warmup", "main", "accessory", "arm", "conditioning", "interval", "recovery"]},
+        "prescription": {"type": "string", "minLength": 1},
+        "sets": {"type": "integer", "minimum": 1},
+        "reps": {"type": ["integer", "string"]},
+        "repsPerSide": {"type": "boolean"},
+        "targetRir": {"type": "number", "minimum": 0, "maximum": 10},
+        "restSeconds": {"type": "integer", "minimum": 0},
+        "plannedLoad": {"$ref": "#/$defs/plannedLoad"},
+        "progression": {"type": "string", "minLength": 1},
+        "loadBasis": {"type": "string", "enum": ["none", "establish-by-rir", "absolute", "range", "percentage-of-reference", "repeat-prior-earned", "smallest-practical-increase", "bodyweight-or-tolerance"]},
+        "comparisonExerciseId": {"type": "string"}
+      }
+    },
+    "plannedLoad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["none", "exact", "range", "relative"]},
+        "kg": {"type": "number", "minimum": 0},
+        "minKg": {"type": "number", "minimum": 0},
+        "maxKg": {"type": "number", "minimum": 0},
+        "percentOfReference": {"type": "number", "exclusiveMinimum": 0, "maximum": 2},
+        "reference": {"type": "string"}
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variant", "comparison"],
+      "properties": {
+        "variant": {"type": "string", "enum": ["odd", "even", "deload", "endurance", "recovery"]},
+        "comparison": {"type": "string", "enum": ["baseline", "progresses", "deloads", "repeats-with-target", "exception"]},
+        "comparisonSessionId": {"type": "string"},
+        "comparisonWeek": {"type": "integer", "minimum": 1},
+        "reason": {"type": "string"}
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "optional", "choices"],
+      "properties": {
+        "name": {"type": "string"},
+        "kind": {"type": "string", "const": "recovery"},
+        "optional": {"type": "boolean", "const": true},
+        "choices": {"type": "array", "items": {"type": "string"}},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "substitution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planned", "substitute", "when"],
+      "properties": {
+        "planned": {"type": "string"},
+        "substitute": {"type": "string"},
+        "when": {"type": "string"}
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "containsPrivateAthleteData": {"type": "boolean"},
+        "doNotBundleInPublicAssets": {"type": "boolean"}
+      }
+    }
+  }
+}

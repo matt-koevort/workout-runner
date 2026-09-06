@@ -1,0 +1,20 @@
+{
+  "name": "workout-runner",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first workout cycle runner and contract tooling",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/**/*.test.js",
+    "cli": "npm run build && node dist/cli/main.js",
+    "migrate": "npm run build && node dist/cli/migrate.js"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
