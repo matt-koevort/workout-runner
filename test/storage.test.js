@@ -65,6 +65,7 @@ test("malformed persisted fields fall back safely while retaining a usable cycle
   assert.equal(migrated.state.draft, undefined);
   assert.equal(migrated.state.sessionsSinceBackup, 0);
   assert.equal(migrated.state.stateVersion, 2);
+  assert.match(migrated.warning, /saved results were unreadable/);
 });
 
 test("empty state is versioned for newly installed browsers", () => {

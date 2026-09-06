@@ -28,24 +28,27 @@ export function normalizeRunnerState(raw: unknown): { state: RunnerState; migrat
   if (!isObject(raw)) return { state: fallback, migrated: true, warning: "Saved workout data was unreadable. Import your cycle or restore a backup to continue." };
 
   const state = fallback;
+  const warnings: string[] = [];
   let migrated = raw.stateVersion !== 2;
   const cycle = raw.cycle;
   if (isObject(cycle) && Array.isArray(cycle.sessions) && Array.isArray(cycle.weeks)) {
     state.cycle = clone(cycle) as unknown as RunnerState["cycle"];
   } else if (cycle !== undefined) {
     migrated = true;
+    warnings.push("the saved cycle was incomplete");
   }
 
   const rawResults = raw.results;
   if (isObject(rawResults) && Array.isArray(rawResults.results)) {
+    const validResults = rawResults.results.filter((result: unknown) => isObject(result) && typeof result.workoutId === "string" && typeof result.sessionId === "string" && typeof result.cycleId === "string");
+    if (validResults.length !== rawResults.results.length) warnings.push("some saved results were unreadable");
     state.results = {
       schemaVersion: "1.0",
       kind: "results",
       // Retain complete records and unknown legacy fields; later export/import
       // validation can report genuinely invalid external files without making
       // app startup dependent on the newest schema.
-      results: clone(rawResults.results)
-        .filter((result: unknown) => isObject(result) && typeof result.workoutId === "string" && typeof result.sessionId === "string" && typeof result.cycleId === "string")
+      results: clone(validResults)
         .map((result: Record<string, unknown>) => ({
           ...result,
           revision: typeof result.revision === "number" && Number.isInteger(result.revision) && result.revision > 0 ? result.revision : 1,
@@ -55,6 +58,7 @@ export function normalizeRunnerState(raw: unknown): { state: RunnerState; migrat
     } as RunnerState["results"];
   } else if (rawResults !== undefined) {
     migrated = true;
+    warnings.push("some saved results were unreadable");
   }
 
   const rawDraft = raw.draft;
@@ -77,12 +81,13 @@ export function normalizeRunnerState(raw: unknown): { state: RunnerState; migrat
     };
   } else if (rawDraft !== undefined) {
     migrated = true;
+    warnings.push("the saved in-progress workout was incomplete");
   }
 
   state.lastBackupAt = typeof raw.lastBackupAt === "string" ? raw.lastBackupAt : undefined;
   state.sessionsSinceBackup = typeof raw.sessionsSinceBackup === "number" && Number.isFinite(raw.sessionsSinceBackup) && raw.sessionsSinceBackup >= 0 ? raw.sessionsSinceBackup : 0;
   if (raw.stateVersion !== 2) migrated = true;
-  return { state, migrated };
+  return { state, migrated, ...(warnings.length ? { warning: "Some saved data could not be restored (" + warnings.join(", ") + "). Import your cycle or restore a backup to continue." } : {}) };
 }
 
 interface LoadOutcome { state: RunnerState; warning?: string }
