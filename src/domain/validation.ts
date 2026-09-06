@@ -53,7 +53,7 @@ function domainIssues(cycle: CycleDocument): ValidationIssue[] {
     if (session.kind === "strength") {
       const arm = session.blocks.find((block) => block.kind === "arm");
       const finisher = session.blocks.find((block) => block.kind === "finisher");
-      if (!arm) issues.push({ path: `/sessions/${session.sessionId}/blocks`, message: "strength session must include an arm block" });
+      if (session.name.startsWith("Upper") && !arm) issues.push({ path: `/sessions/${session.sessionId}/blocks`, message: "upper strength session must include an arm block" });
       if (session.name.startsWith("Upper") && !finisher && session.weekNumber !== 6) issues.push({ path: `/sessions/${session.sessionId}/blocks`, message: "non-deload upper session must include a finisher" });
       if (arm && finisher && arm.order >= finisher.order) issues.push({ path: `/sessions/${session.sessionId}/blocks`, message: "arm block must precede finisher" });
       if (finisher && session.weekNumber !== 6 && finisher.durationMinutes !== 10) issues.push({ path: `/sessions/${session.sessionId}/blocks`, message: "strength finishers must be 10 minutes outside deload" });

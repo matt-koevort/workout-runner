@@ -80,10 +80,12 @@ function strengthSession(week: number, sequence: number, name: string, main: Exe
     block(id, 1, "preparation", "Preparation", [ex(`${id}-prep-1`, "Session preparation", "warmup", name === "Lower" ? "5 minutes: easy bike, glute bridge x10, hip hinge x10, low step-up x6/side" : "6 minutes: easy row/bike, mobility, activation and ramp-up sets", "Complete before working sets.")]),
     block(id, 2, "main", `Main lift — ${main.name}`, [main]),
     block(id, 3, "accessory", odd ? "Odd accessory pairing" : "Even accessory pairing", accessories, { rounds: deload ? 2 : 3 }),
-    block(id, 4, "arm", "Direct arm work — before conditioning", arms, { rounds: deload ? 1 : 2 }),
   ];
-  if (finisher && !deload) blocks.push(block(id, 5, "finisher", `Finisher — ${finisher.format}`, finisher.items, { format: finisher.format, durationMinutes: 10 }));
-  return { sessionId: id, cycleId, weekNumber: week, sequence, name, kind: "strength", targetDurationMinutes, blocks, mainLift: main, lineage: lineage(week, "strength", sequence), notes: ["Record actual load, reps and final-set RIR; blank means unrecorded, never zero."] };
+  if (arms.length) blocks.push(block(id, 4, "arm", "Direct arm work — before conditioning", arms, { rounds: deload ? 1 : 2 }));
+  if (finisher && !deload) blocks.push(block(id, blocks.length + 1, "finisher", `Finisher — ${finisher.format}`, finisher.items, { format: finisher.format, durationMinutes: 10 }));
+  const notes = ["Record actual load, reps and final-set RIR; blank means unrecorded, never zero."];
+  if (name.startsWith("Lower")) notes.push("Record hip response during, later that day and the following morning; stop or substitute sharp, worsening or lingering pain.");
+  return { sessionId: id, cycleId, weekNumber: week, sequence, name, kind: "strength", targetDurationMinutes, blocks, mainLift: main, lineage: lineage(week, "strength", sequence), notes };
 }
 
 function upperA(week: number): WorkoutSession {
@@ -103,8 +105,7 @@ function lower(week: number): WorkoutSession {
   const odd = week % 2 === 1;
   const main = mainExercise(week, "legPress", `${id}-leg-press`, "Leg press");
   const accessories = odd ? [ex(`${id}-hip-thrust`, "Hip thrust", "accessory", "3x8-12 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 3, reps: "8-12", targetRir: 2, restSeconds: 90 }), ex(`${id}-leg-curl`, "Leg curl", "accessory", "3x10-15 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 3, reps: "10-15", targetRir: 2, restSeconds: 75 }), ex(`${id}-leg-extension`, "Leg extension", "accessory", "3x10-15 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 3, reps: "10-15", targetRir: 2, restSeconds: 75 }), ex(`${id}-split-squat`, "Split squat tolerance work", "accessory", "2x8/side @3 RIR; bodyweight or light DBs", "Progress only while hip remains pain-free.", "bodyweight-or-tolerance", { sets: 2, reps: 8, repsPerSide: true, targetRir: 3, restSeconds: 60 })] : [ex(`${id}-rdl`, "DB Romanian deadlift or simple trap-bar deadlift", "accessory", "3x8-10 @3 RIR (W2), 2 RIR (W4)", "Add reps then smallest load increase; no superset.", "smallest-practical-increase", { sets: 3, reps: "8-10", targetRir: week === 4 ? 2 : 3, restSeconds: 90 }), ex(`${id}-leg-extension`, "Leg extension", "accessory", "3x12-15 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 3, reps: "12-15", targetRir: 2, restSeconds: 75 }), ex(`${id}-leg-curl`, "Leg curl", "accessory", "3x12-15 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 3, reps: "12-15", targetRir: 2, restSeconds: 75 }), ex(`${id}-hip-thrust`, "Hip thrust", "accessory", "2x12-15 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 2, reps: "12-15", targetRir: 2, restSeconds: 75 })];
-  const arms = [ex(`${id}-hip-note`, "Hip response check", "recovery", "Record symptoms during, later that day and next morning", "Stop or substitute any sharp, worsening or lingering hip pain.", "none")];
-  return strengthSession(week, 3, "Lower — squat-free hypertrophy", main, odd, 45, accessories, arms);
+  return strengthSession(week, 3, "Lower — squat-free hypertrophy", main, odd, 45, accessories, []);
 }
 
 function upperB(week: number): WorkoutSession {
