@@ -19,6 +19,8 @@ class WorkoutRunner {
   private view: "home" | "session" = "home";
   private timerHandle?: number;
   private message = "";
+  private restoreFocusOnNextRender = false;
+  private audioContext?: AudioContext;
 
   async start(): Promise<void> {
     this.state = await loadState();
@@ -33,10 +35,22 @@ class WorkoutRunner {
     if (this.timerHandle) window.clearInterval(this.timerHandle);
     appRoot.innerHTML = this.view === "session" && this.state.draft ? this.sessionHtml(this.state.draft.prescriptionSnapshot) : this.homeHtml();
     this.bind();
+    if (this.restoreFocusOnNextRender && this.state.draft) {
+      this.restoreFocusOnNextRender = false;
+      const draft = this.state.draft;
+      window.requestAnimationFrame(() => {
+        const card = Array.from(appRoot.querySelectorAll<HTMLElement>("[data-exercise-card]"))
+          .find((candidate) => candidate.dataset.exerciseCard === draft.focusedExerciseId);
+        const field = Array.from(appRoot.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-action='actual']"))
+          .find((candidate) => candidate.dataset.exercise === draft.focusedExerciseId && Number(candidate.dataset.set) === (draft.focusedSetNumber ?? 1));
+        card?.scrollIntoView({ block: "center", behavior: "smooth" });
+        field?.focus({ preventScroll: true });
+      });
+    }
     if (this.state.draft?.timer) {
       this.timerHandle = window.setInterval(() => {
         if (!this.state.draft?.timer) return;
-        if (timerComplete(this.state.draft.timer)) { this.state.draft.timer = undefined; void this.persist(); this.render(); return; }
+        if (timerComplete(this.state.draft.timer)) { this.state.draft.timer = undefined; this.timerCompleteFeedback(); void this.persist(); return; }
         const timer = appRoot.querySelector<HTMLElement>("[data-timer]");
         if (timer) timer.textContent = this.timerText(this.state.draft.timer);
       }, 250);
@@ -76,12 +90,36 @@ class WorkoutRunner {
       const setNumber = index + 1; const actual = actuals.find((candidate) => candidate.setNumber === setNumber) ?? { setNumber };
       return `<div class="set-row"><span class="set-number">${setNumber}</span><input inputmode="decimal" aria-label="${esc(item.name)} set ${setNumber} load" placeholder="Load" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="${setNumber}" data-field="load" value="${inputValue(actual.load)}" /><select aria-label="Load basis" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="${setNumber}" data-field="loadBasis"><option value="" ${!actual.loadBasis ? "selected" : ""}>basis</option><option value="barbell" ${actual.loadBasis === "barbell" ? "selected" : ""}>total</option><option value="per-side" ${actual.loadBasis === "per-side" ? "selected" : ""}>per side</option><option value="bodyweight" ${actual.loadBasis === "bodyweight" ? "selected" : ""}>bodyweight</option></select><input inputmode="numeric" aria-label="${esc(item.name)} set ${setNumber} reps" placeholder="Reps" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="${setNumber}" data-field="reps" value="${inputValue(actual.reps)}" /><input inputmode="decimal" aria-label="${esc(item.name)} set ${setNumber} RIR" placeholder="RIR" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="${setNumber}" data-field="rir" value="${inputValue(actual.rir)}" /><button class="complete-set ${actual.completed ? "selected" : ""}" aria-label="Mark set ${setNumber} complete" data-action="set-complete" data-exercise="${esc(item.exerciseId)}" data-set="${setNumber}">✓</button></div>`;
     }).join("");
-    return `<article class="exercise-card"><div class="exercise-heading"><div><h3>${esc(item.name)}</h3><p>${esc(item.prescription)}</p></div><span class="role">${esc(item.role)}</span></div><div class="exercise-meta">${item.targetRir !== undefined ? `Target ${item.targetRir} RIR` : ""}${item.restSeconds ? ` · ${item.restSeconds}s rest` : ""}${item.repsPerSide ? " · per side" : ""}</div>${item.restSeconds ? `<button class="rest-link" data-action="start-rest" data-seconds="${item.restSeconds}">Start ${item.restSeconds}s rest</button>` : ""}${previous ? `<div class="previous"><span>Previous</span> ${previous.sets.map((set) => [set.loadKg !== undefined ? `${set.loadKg} kg` : "", set.reps !== undefined ? `${set.reps} reps` : "", set.rir !== undefined ? `${set.rir} RIR` : ""].filter(Boolean).join(" × ")).filter(Boolean).join(" · ") || "Recorded, no set details"}</div>` : ""}<div class="set-header"><span>SET</span><span>LOAD</span><span></span><span>REPS</span><span>RIR</span><span></span></div>${setRows}<details><summary>Add time, distance, effort or note</summary><div class="extra-fields"><input placeholder="RPE" inputmode="decimal" aria-label="${esc(item.name)} RPE" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="rpe" value="${inputValue(actuals[0]?.rpe)}" /><input placeholder="Seconds" inputmode="numeric" aria-label="${esc(item.name)} duration seconds" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="durationSeconds" value="${inputValue(actuals[0]?.durationSeconds)}" /><input placeholder="Meters" inputmode="numeric" aria-label="${esc(item.name)} distance meters" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="distanceMeters" value="${inputValue(actuals[0]?.distanceMeters)}" /><select aria-label="Technique" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="technique"><option value="">Technique</option><option value="clean">Clean</option><option value="acceptable">Acceptable</option><option value="degraded">Degraded</option><option value="pain-limited">Pain-limited</option></select><input placeholder="Note" aria-label="${esc(item.name)} note" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="note" value="${inputValue(actuals[0]?.note)}" /></div></details></article>`;
+    return `<article class="exercise-card" data-exercise-card="${esc(item.exerciseId)}"><div class="exercise-heading"><div><h3>${esc(item.name)}</h3><p>${esc(item.prescription)}</p></div><span class="role">${esc(item.role)}</span></div><div class="exercise-meta">${item.targetRir !== undefined ? `Target ${item.targetRir} RIR` : ""}${item.restSeconds ? ` · ${item.restSeconds}s rest` : ""}${item.repsPerSide ? " · per side" : ""}</div>${item.restSeconds ? `<button class="rest-link" data-action="start-rest" data-seconds="${item.restSeconds}">Start ${item.restSeconds}s rest</button>` : ""}${previous ? `<div class="previous"><span>Previous</span> ${previous.sets.map((set) => [set.loadKg !== undefined ? `${set.loadKg} kg` : "", set.reps !== undefined ? `${set.reps} reps` : "", set.rir !== undefined ? `${set.rir} RIR` : ""].filter(Boolean).join(" × ")).filter(Boolean).join(" · ") || "Recorded, no set details"}</div>` : ""}<div class="set-header"><span>SET</span><span>LOAD</span><span></span><span>REPS</span><span>RIR</span><span></span></div>${setRows}<details><summary>Add time, distance, effort or note</summary><div class="extra-fields"><input placeholder="RPE" inputmode="decimal" aria-label="${esc(item.name)} RPE" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="rpe" value="${inputValue(actuals[0]?.rpe)}" /><input placeholder="Seconds" inputmode="numeric" aria-label="${esc(item.name)} duration seconds" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="durationSeconds" value="${inputValue(actuals[0]?.durationSeconds)}" /><input placeholder="Meters" inputmode="numeric" aria-label="${esc(item.name)} distance meters" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="distanceMeters" value="${inputValue(actuals[0]?.distanceMeters)}" /><select aria-label="Technique" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="technique"><option value="">Technique</option><option value="clean">Clean</option><option value="acceptable">Acceptable</option><option value="degraded">Degraded</option><option value="pain-limited">Pain-limited</option></select><input placeholder="Note" aria-label="${esc(item.name)} note" data-action="actual" data-exercise="${esc(item.exerciseId)}" data-set="1" data-field="note" value="${inputValue(actuals[0]?.note)}" /></div></details></article>`;
   }
 
   private timerText(timer: import("../timers/timers.js").TimerState): string {
     const remaining = timerRemaining(timer);
     return `${formatSeconds(remaining)}${timer.kind === "amrap" ? " left" : ""}`;
+  }
+
+  private armAudio(): void {
+    try {
+      const AudioCtor = (window as typeof window & { webkitAudioContext?: typeof AudioContext }).AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtor) return;
+      this.audioContext ??= new AudioCtor();
+      void this.audioContext.resume();
+    } catch { /* best effort; vibration/message still provide feedback */ }
+  }
+
+  private timerCompleteFeedback(): void {
+    try { navigator.vibrate?.([180, 100, 180]); } catch { /* vibration is optional */ }
+    try {
+      if (this.audioContext) {
+        const oscillator = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.08;
+        oscillator.connect(gain); gain.connect(this.audioContext.destination);
+        oscillator.start(); oscillator.stop(this.audioContext.currentTime + 0.18);
+      }
+    } catch { /* audio is optional */ }
+    this.notify("Timer complete — next set when ready.");
   }
 
   private bind(): void {
@@ -109,8 +147,38 @@ class WorkoutRunner {
   private async setCompleted(exerciseId: string, setNumber: number): Promise<void> { const draft = this.state.draft; if (!draft) return; const entries = draft.actuals[exerciseId] ?? []; const actual = entries.find((entry) => entry.setNumber === setNumber) ?? { setNumber }; actual.completed = !actual.completed; if (!entries.includes(actual)) entries.push(actual); draft.actuals[exerciseId] = entries; await this.saveDraft(); this.render(); }
   private async saveDraft(): Promise<void> { const draft = this.state.draft; if (!draft) return; const result = this.resultFromDraft(draft); const index = this.state.results.results.findIndex((candidate) => candidate.workoutId === draft.workoutId); if (index === -1) this.state.results.results.push(result); else this.state.results.results[index] = result; draft.startedAt ||= new Date().toISOString(); await this.persist(); }
   private resultFromDraft(draft: SessionDraft): WorkoutResult {
-    const exercises = Object.entries(draft.actuals).map(([exerciseId, sets]) => ({ exerciseId, name: draft.prescriptionSnapshot.blocks.flatMap((block) => block.items).find((item) => item.exerciseId === exerciseId)?.name ?? exerciseId, sets: sets.map((set) => ({ ...(set.load !== undefined ? { loadKg: set.load } : {}), ...(set.reps !== undefined ? { reps: set.reps } : {}), ...(set.rir !== undefined ? { rir: set.rir } : {}), ...(set.completed !== undefined ? { completed: set.completed } : {}), ...(set.note ? { note: set.note } : {}), ...set })) }));
-    return { workoutId: draft.workoutId, cycleId: draft.cycleId, sessionId: draft.sessionId, revision: (this.state.results.results.find((candidate) => candidate.workoutId === draft.workoutId)?.revision ?? 0) + 1, startedAt: draft.startedAt, status: draft.status === "abandoned" ? "in-progress" : draft.status, exercises, notes: draft.notes, ...( { prescriptionSnapshot: clone(draft.prescriptionSnapshot), actuals: clone(draft.actuals) } as any) };
+    const exercises = Object.entries(draft.actuals).map(([exerciseId, sets]) => ({
+      exerciseId,
+      name: draft.prescriptionSnapshot.blocks.flatMap((block) => block.items).find((item) => item.exerciseId === exerciseId)?.name ?? exerciseId,
+      sets: sets.map((set) => ({
+        setNumber: set.setNumber,
+        ...(set.load !== undefined ? { loadKg: set.load } : {}),
+        ...(set.loadBasis !== undefined ? { loadBasis: set.loadBasis } : {}),
+        ...(set.unit !== undefined ? { unit: set.unit } : {}),
+        ...(set.reps !== undefined ? { reps: set.reps } : {}),
+        ...(set.durationSeconds !== undefined ? { durationSeconds: set.durationSeconds } : {}),
+        ...(set.distanceMeters !== undefined ? { distanceMeters: set.distanceMeters } : {}),
+        ...(set.rir !== undefined ? { rir: set.rir } : {}),
+        ...(set.rpe !== undefined ? { rpe: set.rpe } : {}),
+        ...(set.completed !== undefined ? { completed: set.completed } : {}),
+        ...(set.technique !== undefined ? { technique: set.technique } : {}),
+        ...(set.note !== undefined && set.note !== "" ? { note: set.note } : {}),
+      })),
+    }));
+    const status = draft.status === "abandoned" ? "in-progress" : draft.status;
+    return {
+      workoutId: draft.workoutId,
+      cycleId: draft.cycleId,
+      sessionId: draft.sessionId,
+      revision: (this.state.results.results.find((candidate) => candidate.workoutId === draft.workoutId)?.revision ?? 0) + 1,
+      ...(this.state.cycle?.revision !== undefined ? { cycleRevision: this.state.cycle.revision } : {}),
+      startedAt: draft.startedAt,
+      ...(status === "complete" || status === "skipped" ? { completedAt: new Date().toISOString() } : {}),
+      status,
+      exercises,
+      notes: draft.notes,
+      ...( { prescriptionSnapshot: clone(draft.prescriptionSnapshot) } as any),
+    };
   }
 
   private async act(action: string, element: HTMLElement): Promise<void> {
@@ -118,20 +186,20 @@ class WorkoutRunner {
     if (action === "restore") { appRoot.querySelector<HTMLInputElement>("#restore-file")?.click(); return; }
     if (action === "export") { await this.exportBackup(); return; }
     if (action === "home") { this.view = "home"; this.render(); return; }
-    if (action === "resume") { this.view = "session"; this.render(); return; }
-    if (action === "start") { const session = this.state.cycle?.sessions.find((candidate) => candidate.sessionId === element.dataset.session); if (session) { this.startDraft(session); this.view = "session"; this.render(); } return; }
+    if (action === "resume") { this.view = "session"; this.restoreFocusOnNextRender = true; this.render(); return; }
+    if (action === "start") { const session = this.state.cycle?.sessions.find((candidate) => candidate.sessionId === element.dataset.session); if (session) { this.startDraft(session); this.view = "session"; this.restoreFocusOnNextRender = true; this.render(); } return; }
     if (action === "complete" || action === "skip") { await this.finish(action === "complete" ? "complete" : "skipped"); return; }
     if (action === "abandon") { if (confirm("Abandon this in-progress workout? Your recorded values will be removed.")) { if (this.state.draft) this.state.results.results = this.state.results.results.filter((result) => result.workoutId !== this.state.draft?.workoutId); this.state.draft = undefined; await this.persist(); this.view = "home"; this.notify("Draft abandoned."); } return; }
     if (action === "toggle-block") { const id = element.dataset.block!; const draft = this.state.draft!; draft.collapsedBlocks = draft.collapsedBlocks.includes(id) ? draft.collapsedBlocks.filter((x) => x !== id) : [...draft.collapsedBlocks, id]; await this.persist(); this.render(); return; }
-    if (action === "start-block-timer") { const block = this.state.draft?.prescriptionSnapshot.blocks.find((candidate) => candidate.blockId === element.dataset.block); if (!block || !this.state.draft) return; const source = `${block.format ?? ""} ${block.durationMinutes ?? ""}`.toLowerCase(); const kind = source.includes("amrap") ? "amrap" : source.includes("emom") ? "emom" : source.includes("interval") ? "interval" : "rest"; const intervalMatch = block.items.flatMap((item) => [item.prescription]).join(" ").match(/(\d+)\s*min/); const intervalSeconds = intervalMatch ? Number(intervalMatch[1]) * 60 : undefined; const duration = block.durationMinutes ? block.durationMinutes * 60 : intervalSeconds ? Math.max(intervalSeconds * (block.rounds ?? 1), intervalSeconds) : 60; this.state.draft.timer = makeTimer(kind, duration, Date.now(), { label: block.format ?? block.label, intervalSeconds: kind === "emom" ? 60 : intervalSeconds, rounds: block.rounds }); await this.persist(); this.render(); return; }
-    if (action === "start-rest") { if (!this.state.draft) return; this.state.draft.timer = makeTimer("rest", Number(element.dataset.seconds) || 60, Date.now(), { label: "Rest" }); await this.persist(); this.render(); return; }
+    if (action === "start-block-timer") { const block = this.state.draft?.prescriptionSnapshot.blocks.find((candidate) => candidate.blockId === element.dataset.block); if (!block || !this.state.draft) return; this.armAudio(); const source = `${block.format ?? ""} ${block.durationMinutes ?? ""}`.toLowerCase(); const kind = source.includes("amrap") ? "amrap" : source.includes("emom") ? "emom" : source.includes("interval") ? "interval" : "rest"; const intervalMatch = block.items.flatMap((item) => [item.prescription]).join(" ").match(/(\d+)\s*min/); const intervalSeconds = intervalMatch ? Number(intervalMatch[1]) * 60 : undefined; const duration = block.durationMinutes ? block.durationMinutes * 60 : intervalSeconds ? Math.max(intervalSeconds * (block.rounds ?? 1), intervalSeconds) : 60; this.state.draft.timer = makeTimer(kind, duration, Date.now(), { label: block.format ?? block.label, intervalSeconds: kind === "emom" ? 60 : intervalSeconds, rounds: block.rounds }); await this.persist(); this.render(); return; }
+    if (action === "start-rest") { if (!this.state.draft) return; this.armAudio(); this.state.draft.timer = makeTimer("rest", Number(element.dataset.seconds) || 60, Date.now(), { label: "Rest" }); await this.persist(); this.render(); return; }
     if (action === "stop-timer") { if (this.state.draft) this.state.draft.timer = undefined; await this.persist(); this.render(); return; }
     if (action === "show-help") { this.notify("Everything is stored locally on this device. Export a backup before changing or clearing browser data."); return; }
     if (action === "show-sessions") { this.notify(coreSessions(this.state.cycle!).map((session) => `${session.weekNumber}.${session.sequence} ${session.name}`).join(" · ")); return; }
   }
 
   private clickHiddenFile(): void { const input = document.createElement("input"); input.type = "file"; input.accept = ".json,application/json"; input.addEventListener("change", (event) => void this.fileImport(event)); input.click(); }
-  private startDraft(session: WorkoutSession): void { this.state.draft = { workoutId: session.sessionId, cycleId: session.cycleId, sessionId: session.sessionId, prescriptionSnapshot: clone(session), startedAt: new Date().toISOString(), status: "in-progress", actuals: {}, collapsedBlocks: [], notes: [] }; void this.saveDraft(); }
+  private startDraft(session: WorkoutSession): void { this.state.draft = { workoutId: session.sessionId, cycleId: session.cycleId, sessionId: session.sessionId, prescriptionSnapshot: clone(session), startedAt: new Date().toISOString(), status: "in-progress", actuals: {}, focusedBlockId: session.blocks[0]?.blockId, collapsedBlocks: [], notes: [] }; void this.saveDraft(); }
   private async finish(status: "complete" | "skipped"): Promise<void> { if (!this.state.draft) return; this.state.draft.status = status; await this.saveDraft(); this.state.draft = undefined; this.state.sessionsSinceBackup += 1; await this.persist(); this.view = "home"; this.notify(status === "complete" ? "Session saved. The next session is ready when you are." : "Session skipped. The sequence will continue from the next session."); }
   private async exportBackup(): Promise<void> { const bundle = stateToBundle(this.state); if (!bundle) { this.notify("Import a cycle before exporting a backup."); return; } const body = JSON.stringify(bundle, null, 2); const file = new File([body], `${bundle.cycle.cycleId}.backup.json`, { type: "application/json" }); try { if (navigator.share && navigator.canShare?.({ files: [file] })) await navigator.share({ title: "Workout Runner backup", files: [file] }); else throw new Error("share unavailable"); } catch { const url = URL.createObjectURL(file); const link = document.createElement("a"); link.href = url; link.download = file.name; link.click(); URL.revokeObjectURL(url); } this.state.lastBackupAt = new Date().toISOString(); this.state.sessionsSinceBackup = 0; await this.persist(); this.notify("Backup ready."); }
   private async fileImport(event: Event): Promise<void> { const input = event.currentTarget as HTMLInputElement; const file = input.files?.[0]; if (!file) return; try { const parsed = parseJson(await file.text()); const next = applyImport(this.state, parsed); this.state = next; await this.persist(); this.view = "home"; this.notify("Import complete. Your existing data was kept where it did not conflict."); } catch (error) { this.notify(error instanceof ImportError ? error.message : "Import failed; existing data was not changed."); } finally { input.value = ""; } }
