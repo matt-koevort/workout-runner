@@ -123,7 +123,22 @@ export function validateBundlePortable(value: unknown): PortableValidationReport
   if (value.bundleRevision !== undefined && (!Number.isInteger(value.bundleRevision) || value.bundleRevision < 1)) rootIssues.push({ path: "/bundleRevision", message: "bundleRevision must be positive" });
   const cycle = validateCyclePortable(value.cycle);
   const results = validateResultsPortable(value.results);
-  return { valid: rootIssues.length === 0 && cycle.valid && results.valid, issues: [...rootIssues, ...cycle.issues.map((x) => ({ ...x, path: `/cycle${x.path}` })), ...results.issues.map((x) => ({ ...x, path: `/results${x.path}` }))] };
+  const relationshipIssues: PortableValidationIssue[] = [];
+  if (isObject(value.cycle) && isObject(value.results) && Array.isArray(value.results.results)) {
+    const sessions = new Map<string, Record<string, any>>();
+    for (const session of (value.cycle.sessions as unknown[] ?? [])) if (isObject(session) && typeof session.sessionId === "string") sessions.set(session.sessionId, session);
+    for (const [index, result] of value.results.results.entries()) {
+      if (!isObject(result)) continue;
+      if (result.cycleId !== value.cycle.cycleId) relationshipIssues.push({ path: `/results/${index}/cycleId`, message: "result cycleId must match bundled cycle" });
+      if (isObject(result.prescriptionSnapshot)) {
+        if (result.prescriptionSnapshot.sessionId !== result.sessionId) relationshipIssues.push({ path: `/results/${index}/prescriptionSnapshot/sessionId`, message: "snapshot sessionId must match result" });
+        if (result.prescriptionSnapshot.cycleId !== result.cycleId) relationshipIssues.push({ path: `/results/${index}/prescriptionSnapshot/cycleId`, message: "snapshot cycleId must match result" });
+        const expected = sessions.get(result.sessionId);
+        if (expected && result.prescriptionSnapshot.name !== expected.name) relationshipIssues.push({ path: `/results/${index}/prescriptionSnapshot/name`, message: "snapshot identity does not match bundled session" });
+      }
+    }
+  }
+  return { valid: rootIssues.length === 0 && cycle.valid && results.valid && relationshipIssues.length === 0, issues: [...rootIssues, ...cycle.issues.map((x) => ({ ...x, path: `/cycle${x.path}` })), ...results.issues.map((x) => ({ ...x, path: `/results${x.path}` })), ...relationshipIssues] };
 }
 
 export function isCycleBundle(value: unknown): value is CycleBundle { return isObject(value) && value.kind === "cycle-bundle"; }
