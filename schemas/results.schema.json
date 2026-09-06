@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workout-runner.local/schemas/results.schema.json",
+  "title": "Workout Runner Results",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "results"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "1.0"},
+    "kind": {"type": "string", "const": "results"},
+    "results": {"type": "array", "items": {"$ref": "#/$defs/workoutResult"}}
+  },
+  "$defs": {
+    "loggedSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setNumber"],
+      "properties": {
+        "setNumber": {"type": "integer", "minimum": 1},
+        "loadKg": {"type": "number", "minimum": 0},
+        "load": {"type": "number", "minimum": 0},
+        "loadBasis": {"type": "string", "enum": ["barbell", "per-side", "total", "bodyweight"]},
+        "unit": {"type": "string", "enum": ["kg", "lb", "bodyweight", "meters", "seconds", "reps"]},
+        "reps": {"type": "number", "minimum": 0},
+        "durationSeconds": {"type": "number", "minimum": 0},
+        "distanceMeters": {"type": "number", "minimum": 0},
+        "rir": {"type": "number", "minimum": 0, "maximum": 10},
+        "rpe": {"type": "number", "minimum": 0, "maximum": 10},
+        "completed": {"type": "boolean"},
+        "technique": {"type": "string", "enum": ["clean", "acceptable", "degraded", "pain-limited"]},
+        "note": {"type": "string"}
+      }
+    },
+    "exerciseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exerciseId", "name", "sets"],
+      "properties": {
+        "exerciseId": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "sets": {"type": "array", "items": {"$ref": "#/$defs/loggedSet"}},
+        "note": {"type": "string"}
+      }
+    },
+    "workoutResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workoutId", "cycleId", "sessionId", "revision", "status", "exercises"],
+      "properties": {
+        "workoutId": {"type": "string", "minLength": 1},
+        "cycleId": {"type": "string", "minLength": 1},
+        "sessionId": {"type": "string", "minLength": 1},
+        "revision": {"type": "integer", "minimum": 1},
+        "cycleRevision": {"type": "integer", "minimum": 1},
+        "startedAt": {"type": "string", "minLength": 1},
+        "completedAt": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "enum": ["in-progress", "complete", "skipped"]},
+        "exercises": {"type": "array", "items": {"$ref": "#/$defs/exerciseResult"}},
+        "prescriptionSnapshot": {"$ref": "https://workout-runner.local/schemas/cycle.schema.json#/$defs/session"},
+        "actuals": {"type": "object", "additionalProperties": {"type": "array", "items": {"$ref": "#/$defs/loggedSet"}}},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

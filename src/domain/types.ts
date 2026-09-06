@@ -38,6 +38,7 @@ export interface WorkoutBlock {
   format?: string;
   durationMinutes?: number;
   rounds?: number;
+  restAfterRoundSeconds?: number;
 }
 
 export interface SessionLineage {
@@ -90,6 +91,8 @@ export interface CycleDocument {
   status?: CycleStatus;
   startDate: string;
   lengthWeeks: number;
+  /** Monotonic prescription revision. A result records the revision it started from. */
+  revision?: number;
   previousCycle?: string | null;
   primaryGoal?: string;
   enduranceGoal?: string;
@@ -106,10 +109,18 @@ export interface CycleDocument {
 
 export interface LoggedSet {
   setNumber: number;
+  /** Canonical metric load. `load` is retained for browser draft compatibility. */
   loadKg?: number;
+  load?: number;
+  loadBasis?: "barbell" | "per-side" | "total" | "bodyweight";
+  unit?: "kg" | "lb" | "bodyweight" | "meters" | "seconds" | "reps";
   reps?: number;
+  durationSeconds?: number;
+  distanceMeters?: number;
   rir?: number;
+  rpe?: number;
   completed?: boolean;
+  technique?: "clean" | "acceptable" | "degraded" | "pain-limited";
   note?: string;
 }
 
@@ -125,10 +136,16 @@ export interface WorkoutResult {
   cycleId: string;
   sessionId: string;
   revision: number;
+  /** Revision of the prescription cycle used for this workout. */
+  cycleRevision?: number;
   startedAt?: string;
   completedAt?: string;
   status: "in-progress" | "complete" | "skipped";
   exercises: ExerciseResult[];
+  /** Immutable session prescription captured when the workout was started. */
+  prescriptionSnapshot?: WorkoutSession;
+  /** Browser draft representation retained for safe round-tripping. */
+  actuals?: Record<string, LoggedSet[]>;
   notes?: string[];
 }
 
@@ -142,6 +159,7 @@ export interface CycleBundle {
   schemaVersion: "1.0";
   kind: "cycle-bundle";
   exportedAt: string;
+  bundleRevision?: number;
   cycle: CycleDocument;
   results: ResultsDocument;
 }

@@ -13,6 +13,7 @@
     "status": {"type": "string", "enum": ["planned", "active", "complete", "archived"]},
     "startDate": {"type": "string", "format": "date"},
     "lengthWeeks": {"type": "integer", "minimum": 1, "maximum": 52},
+    "revision": {"type": "integer", "minimum": 1},
     "previousCycle": {"type": ["string", "null"]},
     "primaryGoal": {"type": "string"},
     "enduranceGoal": {"type": "string"},
@@ -64,7 +65,8 @@
         "items": {"type": "array", "items": {"$ref": "#/$defs/exercise"}},
         "format": {"type": "string"},
         "durationMinutes": {"type": "integer", "minimum": 1},
-        "rounds": {"type": "integer", "minimum": 1}
+        "rounds": {"type": "integer", "minimum": 1},
+        "restAfterRoundSeconds": {"type": "integer", "minimum": 0}
       }
     },
     "exercise": {

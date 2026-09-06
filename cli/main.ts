@@ -48,7 +48,7 @@ function runPack(args: string[]): void {
   assertValid(validateCycle(cycle), "cycle");
   const output = option(args, "--output") ?? resolve(option(args, "--trainer-dir", defaultTrainerDir)!, "cycles", `${cycle.cycleId}.bundle.json`);
   if (output.split(/[\\/]/).includes("public") || output.includes("/dist/")) throw new Error("Refusing to pack private athlete data into a public/dist asset path");
-  const bundle: CycleBundle = { schemaVersion: "1.0", kind: "cycle-bundle", exportedAt: "1970-01-01T00:00:00.000Z", cycle, results: emptyResults() };
+  const bundle: CycleBundle = { schemaVersion: "1.0", kind: "cycle-bundle", exportedAt: "1970-01-01T00:00:00.000Z", bundleRevision: cycle.revision ?? 1, cycle, results: emptyResults() };
   writeJson(output, bundle);
   console.log(output);
 }

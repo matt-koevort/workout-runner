@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workout-runner.local/schemas/bundle.schema.json",
+  "title": "Workout Runner Cycle Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "exportedAt", "cycle", "results"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "1.0"},
+    "kind": {"type": "string", "const": "cycle-bundle"},
+    "exportedAt": {"type": "string", "minLength": 1},
+    "bundleRevision": {"type": "integer", "minimum": 1},
+    "cycle": {"$ref": "https://workout-runner.local/schemas/cycle.schema.json"},
+    "results": {"$ref": "https://workout-runner.local/schemas/results.schema.json"}
+  }
+}

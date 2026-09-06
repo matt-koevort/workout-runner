@@ -20,6 +20,40 @@ function block(sessionId: string, order: number, kind: WorkoutBlock["kind"], lab
   return { blockId: `${sessionId}-${kind}`, kind, label, order, items, ...extra };
 }
 
+function preparationFor(name: string): string {
+  if (name.startsWith("Upper A")) return "2 minutes easy row or SkiErg; thread-the-needle x8/side; band dislocates x12; scapular push-ups x10; band pull-aparts x15; then 2-3 ramp-up sets of barbell bench press.";
+  if (name.startsWith("Upper B")) return "2 minutes easy row or bike; cat-cow x8; shoulder CARs x6/side; band external rotation x12/side; scapular pull-ups x8; then 2 ramp-up sets of strict press.";
+  return "3 minutes easy bike; glute bridge x10; bodyweight hip hinge x10; low step-up x6/side; then one light ramp-up set each for leg press and the first secondary lift.";
+}
+
+function accessoryGroups(name: string, odd: boolean, accessories: ExercisePrescription[], deload: boolean): Array<{ label: string; items: ExercisePrescription[]; rounds: number; restAfterRoundSeconds: number; format?: string }> {
+  if (name.startsWith("Lower")) {
+    const groups = odd
+      ? [
+        { label: "Hip thrust — straight sets", items: accessories.slice(0, 1), rounds: 3, restAfterRoundSeconds: 90, format: "straight sets" },
+        { label: "Leg curl + leg extension — alternate", items: accessories.slice(1, 3), rounds: 3, restAfterRoundSeconds: 75, format: "alternate; complete both movements before resting" },
+        { label: "Split squat tolerance work — straight sets", items: accessories.slice(3, 4), rounds: 2, restAfterRoundSeconds: 60, format: "straight sets" },
+      ]
+      : [
+        { label: "DB RDL or trap-bar deadlift — straight sets", items: accessories.slice(0, 1), rounds: 3, restAfterRoundSeconds: 90, format: "straight sets; do not superset" },
+        { label: "Leg extension + leg curl — alternate", items: accessories.slice(1, 3), rounds: 3, restAfterRoundSeconds: 75, format: "alternate; complete both movements before resting" },
+        { label: "Hip thrust — straight sets", items: accessories.slice(3, 4), rounds: 2, restAfterRoundSeconds: 75, format: "straight sets" },
+      ];
+    return deload ? groups.slice(0, 2) : groups;
+  }
+  const primaryLabel = `${odd ? "Odd" : "Even"} primary pair`;
+  const secondaryLabel = `${odd ? "Odd" : "Even"} secondary pair`;
+  return [
+    { label: primaryLabel, items: accessories.slice(0, 2), rounds: deload ? 2 : 3, restAfterRoundSeconds: 90, format: "superset; complete both movements before resting" },
+    { label: secondaryLabel, items: accessories.slice(2, 4), rounds: deload ? 1 : 2, restAfterRoundSeconds: 75, format: "superset; complete both movements before resting" },
+  ];
+}
+
+function baselineFinisher(week: number, items: ExercisePrescription[]): ExercisePrescription[] {
+  if (week !== 1 && week !== 2) return items;
+  return items.map((item) => ({ ...item, progression: "Establish a repeatable baseline score at the prescribed effort; future appearances progress from this score." }));
+}
+
 const mainPlans = {
   bench: [
     { prescription: "Establish a load for 4x8 @3 RIR", loadBasis: "establish-by-rir" as const, plannedLoad: { kind: "none" as const } },
@@ -49,11 +83,14 @@ const mainPlans = {
 
 function mainExercise(week: number, key: keyof typeof mainPlans, id: string, name: string): ExercisePrescription {
   const plan = mainPlans[key][week - 1];
+  const rirMatches = [...plan.prescription.matchAll(/(\d+(?:-\d+)?)\s*RIR/g)].map((match) => match[1]);
+  const rirText = rirMatches.at(-1) ?? "2";
+  const rirParts = rirText.split("-").map(Number);
   return ex(id, name, "main", plan.prescription, "Add reps before load; only increase after every set earns the target RIR and clean technique.", plan.loadBasis, {
     plannedLoad: plan.plannedLoad,
     sets: plan.prescription.startsWith("2x") ? 2 : 4,
     reps: plan.prescription.includes("4x9-10") ? "9-10" : plan.prescription.match(/(?:4x|2x)(\d+)/)?.[1] ? Number(plan.prescription.match(/(?:4x|2x)(\d+)/)?.[1]) : undefined,
-    targetRir: Number(plan.prescription.match(/@(\d+(?:-\d+)?)\s*RIR/)?.[1]?.split("-")[0] ?? 2),
+    targetRir: rirParts.length === 2 ? (rirParts[0] + rirParts[1]) / 2 : rirParts[0],
     restSeconds: 120,
   });
 }
@@ -77,11 +114,11 @@ function strengthSession(week: number, sequence: number, name: string, main: Exe
   const id = `${cycleId}-w${week}-s${String(sequence).padStart(2, "0")}`;
   const deload = week === 6;
   const blocks: WorkoutBlock[] = [
-    block(id, 1, "preparation", "Preparation", [ex(`${id}-prep-1`, "Session preparation", "warmup", name === "Lower" ? "5 minutes: easy bike, glute bridge x10, hip hinge x10, low step-up x6/side" : "6 minutes: easy row/bike, mobility, activation and ramp-up sets", "Complete before working sets.")]),
+    block(id, 1, "preparation", "Preparation", [ex(`${id}-prep-1`, "Session preparation", "warmup", preparationFor(name), "Complete this ordered sequence before working sets.")]),
     block(id, 2, "main", `Main lift — ${main.name}`, [main]),
-    block(id, 3, "accessory", odd ? "Odd accessory pairing" : "Even accessory pairing", accessories, { rounds: deload ? 2 : 3 }),
   ];
-  if (arms.length) blocks.push(block(id, 4, "arm", "Direct arm work — before conditioning", arms, { rounds: deload ? 1 : 2 }));
+  for (const group of accessoryGroups(name, odd, accessories, deload)) blocks.push(block(id, blocks.length + 1, "accessory", group.label, group.items, { rounds: group.rounds, restAfterRoundSeconds: group.restAfterRoundSeconds, format: group.format }));
+  if (arms.length) blocks.push(block(id, blocks.length + 1, "arm", "Direct arm work — before conditioning", arms, { rounds: deload ? 1 : 2, restAfterRoundSeconds: 45 }));
   if (finisher && !deload) blocks.push(block(id, blocks.length + 1, "finisher", `Finisher — ${finisher.format}`, finisher.items, { format: finisher.format, durationMinutes: 10 }));
   const notes = ["Record actual load, reps and final-set RIR; blank means unrecorded, never zero."];
   if (name.startsWith("Lower")) notes.push("Record hip response during, later that day and the following morning; stop or substitute sharp, worsening or lingering pain.");
@@ -97,7 +134,7 @@ function upperA(week: number): WorkoutSession {
     : [ex(`${id}-floor-press`, "Neutral-grip DB floor press", "accessory", "3x8-12 @2 RIR", "Add reps across all sets, then smallest practical load increase.", "smallest-practical-increase", { sets: 3, reps: "8-12", targetRir: 2, restSeconds: 90 }), ex(`${id}-one-arm-row`, "One-arm DB row", "accessory", "3x10-12/side @2 RIR", "Add reps across all sets, then smallest practical load increase.", "smallest-practical-increase", { sets: 3, reps: "10-12", repsPerSide: true, targetRir: 2, restSeconds: 90 }), ex(`${id}-cable-press`, "Standing cable chest press", "accessory", "2x10-15 @2 RIR", "Reach top of range before load.", "smallest-practical-increase", { sets: 2, reps: "10-15", targetRir: 2, restSeconds: 60 }), ex(`${id}-straight-pulldown`, "Straight-arm cable pulldown", "accessory", "2x10-15 @2 RIR", "Reach top of range before load.", "smallest-practical-increase", { sets: 2, reps: "10-15", targetRir: 2, restSeconds: 60 })];
   const arms = odd ? [ex(`${id}-curl`, "One-arm low-cable curl; upper arm slightly in front", "arm", "2x10-15/side @1-2 RIR", "Reach top of range before load.", "smallest-practical-increase", { sets: 2, reps: "10-15", repsPerSide: true, targetRir: 1.5, restSeconds: 45 }), ex(`${id}-triceps`, "Rope triceps pressdown", "arm", "2x10-15 @1-2 RIR", "Reach top of range before load.", "smallest-practical-increase", { sets: 2, reps: "10-15", targetRir: 1.5, restSeconds: 45 })] : [ex(`${id}-curl`, "Standing rope cable curl; elbows slightly in front", "arm", "2x10-15 @1-2 RIR", "Reach top of range before load.", "smallest-practical-increase", { sets: 2, reps: "10-15", targetRir: 1.5, restSeconds: 45 }), ex(`${id}-triceps`, "Overhead rope triceps extension", "arm", "2x10-15 @1-2 RIR", "Reach top of range before load.", "smallest-practical-increase", { sets: 2, reps: "10-15", targetRir: 1.5, restSeconds: 45 })];
   const finisher = odd ? { format: "10-minute AMRAP", items: [ex(`${id}-pushups`, "Hand-release push-ups", "conditioning", "8 reps", "Beat the comparison score by 1-3 reps without failure.", "bodyweight-or-tolerance"), ex(`${id}-band-row`, "Anchored band rows", "conditioning", "12 reps", "Beat the comparison score by 1-3 reps without failure.", "bodyweight-or-tolerance"), ex(`${id}-hollow`, "Hollow hold", "conditioning", "20 seconds", "Beat the comparison score by 1-3 reps without failure.", "bodyweight-or-tolerance")] } : { format: "alternating EMOM for 10 minutes", items: [ex(`${id}-squeeze`, "Light DB squeeze press", "conditioning", "10 reps on odd minutes", "Add one rep per minute or a small load increase, not both.", "smallest-practical-increase"), ex(`${id}-renegade`, "Renegade rows", "conditioning", "8 total reps on even minutes", "Add one rep per minute or a small load increase, not both.", "smallest-practical-increase")] };
-  return strengthSession(week, 1, "Upper A — horizontal push/pull", main, odd, 50, accessories, arms, finisher);
+  return strengthSession(week, 1, "Upper A — horizontal push/pull", main, odd, 50, accessories, arms, { ...finisher, items: baselineFinisher(week, finisher.items) });
 }
 
 function lower(week: number): WorkoutSession {
@@ -115,7 +152,7 @@ function upperB(week: number): WorkoutSession {
   const accessories = odd ? [ex(`${id}-pullup`, "Pull-up or assisted pull-up", "accessory", "3x6-10 @2 RIR", "Add reps; use assistance when needed to retain 2 RIR.", "bodyweight-or-tolerance", { sets: 3, reps: "6-10", targetRir: 2, restSeconds: 90 }), ex(`${id}-lateral`, "Lean-away DB lateral raise", "accessory", "3x10-15/side @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 3, reps: "10-15", repsPerSide: true, targetRir: 2, restSeconds: 75 }), ex(`${id}-row`, "Half-kneeling one-arm cable row", "accessory", "2x10-12/side @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 2, reps: "10-12", repsPerSide: true, targetRir: 2, restSeconds: 60 }), ex(`${id}-rear-delt`, "Cable rear-delt fly", "accessory", "2x12-15 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 2, reps: "12-15", targetRir: 2, restSeconds: 60 })] : [ex(`${id}-arnold`, "Seated Arnold press", "accessory", "3x8-12 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 3, reps: "8-12", targetRir: 2, restSeconds: 90 }), ex(`${id}-rear-row`, "Chest-supported rear-delt row", "accessory", "3x10-15 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 3, reps: "10-15", targetRir: 2, restSeconds: 90 }), ex(`${id}-pulldown`, "Neutral-grip lat pulldown", "accessory", "2x8-12 @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 2, reps: "8-12", targetRir: 2, restSeconds: 75 }), ex(`${id}-cable-lateral`, "Cable lateral raise", "accessory", "2x12-15/side @2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 2, reps: "12-15", repsPerSide: true, targetRir: 2, restSeconds: 60 })];
   const arms = odd ? [ex(`${id}-bayesian`, "Bayesian cable curl; upper arm behind torso", "arm", "2x10-15/side @1-2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 2, reps: "10-15", repsPerSide: true, targetRir: 1.5, restSeconds: 45 }), ex(`${id}-oh-triceps`, "Overhead rope triceps extension", "arm", "2x10-15 @1-2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 2, reps: "10-15", targetRir: 1.5, restSeconds: 45 })] : [ex(`${id}-incline-curl`, "Incline DB curl; upper arms behind torso", "arm", "2x10-15 @1-2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 2, reps: "10-15", targetRir: 1.5, restSeconds: 45 }), ex(`${id}-lying-triceps`, "Lying DB triceps extension", "arm", "2x10-15 @1-2 RIR", "Add reps then smallest load increase.", "smallest-practical-increase", { sets: 2, reps: "10-15", targetRir: 1.5, restSeconds: 45 })];
   const finisher = odd ? { format: "alternating EMOM for 10 minutes", items: [ex(`${id}-ski`, "SkiErg", "conditioning", "8-12 calories on odd minutes", "Add one calorie or rep per minute at RPE <=8.", "smallest-practical-increase"), ex(`${id}-push-press`, "Light DB push press", "conditioning", "8 total reps on even minutes", "Add one calorie or rep per minute at RPE <=8.", "smallest-practical-increase")] } : { format: "10-minute AMRAP", items: [ex(`${id}-db-push`, "Light alternating DB push press", "conditioning", "6 total reps", "Beat W2 by 1-3 reps or make one small load increase, not both.", "smallest-practical-increase"), ex(`${id}-gorilla`, "Gorilla rows", "conditioning", "8 total reps", "Beat W2 by 1-3 reps or make one small load increase, not both.", "smallest-practical-increase"), ex(`${id}-burpee`, "Burpees", "conditioning", "6 reps", "Beat W2 by 1-3 reps or make one small load increase, not both.", "bodyweight-or-tolerance")] };
-  return strengthSession(week, 4, "Upper B — vertical push/pull", main, odd, 50, accessories, arms, finisher);
+  return strengthSession(week, 4, "Upper B — vertical push/pull", main, odd, 50, accessories, arms, { ...finisher, items: baselineFinisher(week, finisher.items) });
 }
 
 function swim(week: number): WorkoutSession {
@@ -147,7 +184,7 @@ export function buildCurrentCycle(): CycleDocument {
   const sessions: WorkoutSession[] = [];
   for (let week = 1; week <= 6; week += 1) sessions.push(upperA(week), swim(week), lower(week), upperB(week), run(week));
   return {
-    schemaVersion: "1.0", kind: "cycle", cycleId, name: "Hybrid Hypertrophy Base", status: "planned", startDate: "2026-09-07", lengthWeeks: 6, previousCycle: null,
+    schemaVersion: "1.0", kind: "cycle", cycleId, name: "Hybrid Hypertrophy Base", status: "planned", startDate: "2026-09-07", lengthWeeks: 6, revision: 1, previousCycle: null,
     primaryGoal: "hypertrophy and fat loss", enduranceGoal: "maintain running capacity while rebuilding run consistency and retaining swimming",
     weeks: [1, 2, 3, 4, 5, 6].map((weekNumber) => ({ weekNumber, label: weekNumber === 6 ? "Deload" : `Build ${weekNumber}`, phase: weekNumber === 6 ? "deload" as const : "build" as const })),
     sessions,

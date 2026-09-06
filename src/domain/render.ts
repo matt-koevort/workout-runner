@@ -12,6 +12,7 @@ function renderBlock(block: WorkoutBlock): string {
   if (block.format) output += line(`Format: ${block.format}`);
   if (block.durationMinutes) output += line(`Duration: ${block.durationMinutes} minutes`);
   if (block.rounds) output += line(`Rounds: ${block.rounds}`);
+  if (block.restAfterRoundSeconds !== undefined) output += line(`Rest after round: ${block.restAfterRoundSeconds} seconds`);
   for (const item of block.items) output += line(renderExercise(item));
   return `${output}\n`;
 }
