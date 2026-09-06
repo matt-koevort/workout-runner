@@ -6,6 +6,9 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "dev": "vite",
+    "build:web": "vite build",
+    "preview": "vite preview",
     "test": "npm run build && node --test test/**/*.test.js",
     "cli": "npm run build && node dist/cli/main.js",
     "migrate": "npm run build && node dist/cli/migrate.js"
@@ -15,6 +18,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0"
   }
 }

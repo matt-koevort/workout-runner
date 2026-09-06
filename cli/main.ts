@@ -19,7 +19,7 @@ function positional(args: string[]): string | undefined { return args.find((arg)
 
 function cyclePath(args: string[]): string {
   const trainerDir = option(args, "--trainer-dir", defaultTrainerDir)!;
-  return resolve(positional(args) ?? resolve(trainerDir, "cycles", defaultCycleFile));
+  return resolve(option(args, "--input") ?? positional(args) ?? resolve(trainerDir, "cycles", defaultCycleFile));
 }
 
 function printReport(report: { valid: boolean; issues: { path: string; message: string }[] }): void {
@@ -54,7 +54,7 @@ function runPack(args: string[]): void {
 }
 
 function runImportResults(args: string[]): void {
-  const incoming = readJson<ResultsDocument>(resolve(positional(args) ?? "results.json"));
+  const incoming = readJson<ResultsDocument>(resolve(option(args, "--input") ?? positional(args) ?? "results.json"));
   assertValid(validateResults(incoming), "incoming results");
   const output = option(args, "--into") ?? resolve(option(args, "--trainer-dir", defaultTrainerDir)!, "results.json");
   const existing = existsSync(output) ? readJson<ResultsDocument>(output) : emptyResults();
@@ -66,7 +66,7 @@ function runImportResults(args: string[]): void {
 }
 
 function runSummarize(args: string[]): void {
-  const path = positional(args) ?? option(args, "--results", resolve(option(args, "--trainer-dir", defaultTrainerDir)!, "results.json"));
+  const path = option(args, "--input") ?? positional(args) ?? option(args, "--results", resolve(option(args, "--trainer-dir", defaultTrainerDir)!, "results.json"));
   if (!path || !existsSync(path)) { console.log("Completed: 0\nIn progress: 0\nSkipped: 0"); return; }
   const value = readJson<unknown>(path);
   if ((value as { kind?: string }).kind === "cycle-bundle") {
@@ -82,12 +82,16 @@ export function main(args = process.argv.slice(2)): void {
   try {
     switch (command) {
       case "validate": runValidate(rest); break;
+      case "validate-cycle": runValidate(rest); break;
       case "render": runRender(rest); break;
+      case "render-cycle": runRender(rest); break;
       case "pack": runPack(rest); break;
+      case "package-cycle": runPack(rest); break;
       case "import-results": runImportResults(rest); break;
+      case "validate-log": printReport(validateResults(readJson<unknown>(resolve(option(rest, "--input") ?? positional(rest) ?? "results.json")))); break;
       case "summarize": runSummarize(rest); break;
       case "migrate": console.log(migrate(option(rest, "--trainer-dir", defaultTrainerDir))); break;
-      default: throw new Error("Usage: workout-runner <validate|render|pack|import-results|summarize|migrate> [path] [--trainer-dir DIR]");
+      default: throw new Error("Usage: workout-runner <validate-cycle|render-cycle|package-cycle|validate-log|import-results|summarize|migrate> [--input PATH] [--output PATH]");
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);

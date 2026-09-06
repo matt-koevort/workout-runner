@@ -26,6 +26,8 @@ trainer context + historical patterns
 
 The current cycle is six weeks with five ordered core sessions per week (30 total): Upper A, Swim, Lower, Upper B, Run. Optional recovery is a separate non-core choice and never contributes required work. Every session is expanded; the phone does not resolve Odd/Even templates at runtime.
 
+For integration with training skills, migration also writes the canonical directory shape `cycles/<cycle-id>/cycle.json` and its generated `cycle.md`; a flat `cycles/<cycle-id>.json` compatibility copy is retained for the current legacy layout.
+
 ## IDs, sequencing and lineage
 
 IDs are stable and deterministic: `${cycleId}-w${week}-s${sequence}` for sessions, with block and exercise IDs below the session. Workout result IDs must equal the session ID (or add a client attempt suffix if a future product supports repeated attempts). Session sequence is always 1..5 within a week.
@@ -50,5 +52,16 @@ npm run cli -- pack --trainer-dir /Users/matt/projects/personal-trainer --output
 npm run cli -- import-results /tmp/results.json --into /tmp/results.merged.json
 npm run cli -- summarize /tmp/results.merged.json
 ```
+
+The stable skill-facing aliases are also available:
+
+```text
+npm run cli -- validate-cycle --input cycles/<cycle-id>/cycle.json
+npm run cli -- render-cycle --input cycles/<cycle-id>/cycle.json --output cycles/<cycle-id>/cycle.md
+npm run cli -- package-cycle --input cycles/<cycle-id>/cycle.json --output /tmp/cycle.bundle.json
+npm run cli -- validate-log --input /tmp/results.json
+```
+
+`package-cycle` emits a deterministic JSON bundle (`cycle.bundle.json`), the documented free/local equivalent of a zip phone bundle.
 
 All outputs are deterministic except `exportedAt` in a bundle, which is fixed by the CLI's pack operation for reproducible fixtures and can be replaced by the UI at export time.
