@@ -34,6 +34,8 @@ export interface SessionDraft {
 }
 
 export interface RunnerState {
+  /** Persisted state format. Older installs may omit this and are migrated on read. */
+  stateVersion: 2;
   cycle?: CycleDocument;
   results: ResultsDocument;
   draft?: SessionDraft;
@@ -41,4 +43,4 @@ export interface RunnerState {
   sessionsSinceBackup: number;
 }
 
-export const emptyRunnerState = (): RunnerState => ({ results: { schemaVersion: "1.0", kind: "results", results: [] }, sessionsSinceBackup: 0 });
+export const emptyRunnerState = (): RunnerState => ({ stateVersion: 2, results: { schemaVersion: "1.0", kind: "results", results: [] }, sessionsSinceBackup: 0 });

@@ -1,6 +1,6 @@
 import "./styles.css";
 import type { ExercisePrescription, WorkoutResult, WorkoutSession } from "../domain/types.js";
-import { loadState, saveState, stateToBundle } from "../storage/db.js";
+import { loadStateDetailed, saveState, stateToBundle } from "../storage/db.js";
 import type { RunnerState, SessionDraft, SetActual } from "../storage/types.js";
 import { applyImport, ImportError, parseJson } from "./imports.js";
 import { coreSessions, nextCoreSession, previousExerciseResult, sessionProgress, sessionStatus, sessionsForWeek, type SessionStatus } from "./sequence.js";
@@ -15,7 +15,7 @@ const setCount = (item: ExercisePrescription): number => item.sets ?? 1;
 const inputValue = (value: unknown): string => value === undefined || value === null ? "" : String(value);
 
 class WorkoutRunner {
-  private state: RunnerState = { results: { schemaVersion: "1.0", kind: "results", results: [] }, sessionsSinceBackup: 0 };
+  private state: RunnerState = { stateVersion: 2, results: { schemaVersion: "1.0", kind: "results", results: [] }, sessionsSinceBackup: 0 };
   private view: "home" | "weeks" | "session" | "preview" = "home";
   private selectedWeek = 1;
   private previewSession?: WorkoutSession;
@@ -25,8 +25,17 @@ class WorkoutRunner {
   private audioContext?: AudioContext;
 
   async start(): Promise<void> {
-    this.state = await loadState();
-    if (this.state.cycle) this.selectedWeek = sessionProgress(this.state.cycle, this.state.results).week;
+    try {
+      const loaded = await loadStateDetailed();
+      this.state = loaded.state;
+      if (loaded.warning) this.message = loaded.warning;
+      if (this.state.cycle) this.selectedWeek = sessionProgress(this.state.cycle, this.state.results).week;
+    } catch (error) {
+      // Keep the app usable even if an unexpected browser/storage error escapes
+      // the storage adapter. The user gets a recoverable import/restore path
+      // instead of being left on the static loading shell forever.
+      this.message = `${error instanceof Error ? error.message : "Could not load local workout data."} Import your cycle or restore a backup to continue.`;
+    }
     this.render();
     navigator.serviceWorker?.register("./sw.js").catch(() => undefined);
   }

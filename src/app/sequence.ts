@@ -48,7 +48,9 @@ export function sessionProgress(cycle: CycleDocument, results: { results: Workou
 }
 
 export function previousResult(results: { results: WorkoutResult[] }, session: WorkoutSession, exerciseId: string): WorkoutResult | undefined {
-  const lineage = session.lineage.comparisonSessionId;
+  // Older imported cycles may not have lineage metadata. They remain usable;
+  // simply fall back to the most recent completed result for that exercise.
+  const lineage = session.lineage?.comparisonSessionId;
   const candidates = results.results.filter((result) => result.cycleId === session.cycleId && (lineage ? result.sessionId === lineage : result.sessionId !== session.sessionId) && result.status === "complete");
   return candidates.sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? "")).find((result) => result.exercises.some((exercise) => exercise.exerciseId === exerciseId));
 }

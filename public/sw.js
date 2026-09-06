@@ -1,4 +1,6 @@
-const CACHE = "workout-runner-shell-v2";
+// Bump this whenever the shell/bootstrap behavior changes. Existing installed
+// PWAs otherwise keep serving an old cached index and JS bundle indefinitely.
+const CACHE = "workout-runner-shell-v3";
 const BASE = new URL("./", self.registration.scope);
 const shell = [new URL("./", BASE).href, new URL("./index.html", BASE).href, new URL("./manifest.webmanifest", BASE).href, new URL("./icon.svg", BASE).href];
 self.addEventListener("install", (event) => { event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(shell))); self.skipWaiting(); });

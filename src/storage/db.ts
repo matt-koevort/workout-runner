@@ -5,42 +5,150 @@ import { emptyRunnerState } from "./types.js";
 const DB_NAME = "workout-runner";
 const STORE = "state";
 const KEY = "singleton";
+const DB_VERSION = 2;
+const READ_TIMEOUT_MS = 5_000;
 let memoryState: RunnerState | undefined;
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 
 function indexedDbAvailable(): boolean { return typeof indexedDB !== "undefined"; }
 
-export async function loadState(): Promise<RunnerState> {
-  if (!indexedDbAvailable()) return clone(memoryState ?? emptyRunnerState());
-  return new Promise((resolve) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onerror = () => resolve(clone(memoryState ?? emptyRunnerState()));
-    request.onsuccess = () => {
-      const tx = request.result.transaction(STORE, "readonly");
-      const get = tx.objectStore(STORE).get(KEY);
-      get.onerror = () => resolve(clone(memoryState ?? emptyRunnerState()));
-      get.onsuccess = () => resolve(clone(get.result ?? emptyRunnerState()));
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Convert state written by any earlier PWA release into the current in-memory
+ * shape without deleting a usable cycle, result, or draft. This deliberately
+ * does not run strict import validation: old result records may contain fields
+ * that are no longer emitted but are still useful to the athlete.
+ */
+export function normalizeRunnerState(raw: unknown): { state: RunnerState; migrated: boolean; warning?: string } {
+  const fallback = emptyRunnerState();
+  if (!isObject(raw)) return { state: fallback, migrated: true, warning: "Saved workout data was unreadable. Import your cycle or restore a backup to continue." };
+
+  const state = fallback;
+  let migrated = raw.stateVersion !== 2;
+  const cycle = raw.cycle;
+  if (isObject(cycle) && Array.isArray(cycle.sessions) && Array.isArray(cycle.weeks)) {
+    state.cycle = clone(cycle) as unknown as RunnerState["cycle"];
+  } else if (cycle !== undefined) {
+    migrated = true;
+  }
+
+  const rawResults = raw.results;
+  if (isObject(rawResults) && Array.isArray(rawResults.results)) {
+    state.results = {
+      schemaVersion: "1.0",
+      kind: "results",
+      // Retain complete records and unknown legacy fields; later export/import
+      // validation can report genuinely invalid external files without making
+      // app startup dependent on the newest schema.
+      results: clone(rawResults.results)
+        .filter((result: unknown) => isObject(result) && typeof result.workoutId === "string" && typeof result.sessionId === "string" && typeof result.cycleId === "string")
+        .map((result: Record<string, unknown>) => ({
+          ...result,
+          revision: typeof result.revision === "number" && Number.isInteger(result.revision) && result.revision > 0 ? result.revision : 1,
+          status: result.status === "complete" || result.status === "skipped" ? result.status : "in-progress",
+          exercises: Array.isArray(result.exercises) ? result.exercises : [],
+        })),
+    } as RunnerState["results"];
+  } else if (rawResults !== undefined) {
+    migrated = true;
+  }
+
+  const rawDraft = raw.draft;
+  if (isObject(rawDraft) && isObject(rawDraft.prescriptionSnapshot) && typeof rawDraft.sessionId === "string") {
+    const snapshot = rawDraft.prescriptionSnapshot;
+    state.draft = {
+      workoutId: typeof rawDraft.workoutId === "string" ? rawDraft.workoutId : rawDraft.sessionId,
+      cycleId: typeof rawDraft.cycleId === "string" ? rawDraft.cycleId : typeof snapshot.cycleId === "string" ? snapshot.cycleId : "",
+      sessionId: rawDraft.sessionId,
+      prescriptionSnapshot: clone(snapshot) as unknown as NonNullable<RunnerState["draft"]>["prescriptionSnapshot"],
+      startedAt: typeof rawDraft.startedAt === "string" ? rawDraft.startedAt : new Date().toISOString(),
+      status: rawDraft.status === "complete" || rawDraft.status === "skipped" || rawDraft.status === "abandoned" ? rawDraft.status : "in-progress",
+      actuals: isObject(rawDraft.actuals) ? clone(rawDraft.actuals) as NonNullable<RunnerState["draft"]>["actuals"] : {},
+      focusedBlockId: typeof rawDraft.focusedBlockId === "string" ? rawDraft.focusedBlockId : undefined,
+      focusedExerciseId: typeof rawDraft.focusedExerciseId === "string" ? rawDraft.focusedExerciseId : undefined,
+      focusedSetNumber: typeof rawDraft.focusedSetNumber === "number" ? rawDraft.focusedSetNumber : undefined,
+      collapsedBlocks: Array.isArray(rawDraft.collapsedBlocks) ? rawDraft.collapsedBlocks.filter((item): item is string => typeof item === "string") : [],
+      notes: Array.isArray(rawDraft.notes) ? rawDraft.notes.filter((item): item is string => typeof item === "string") : [],
+      timer: isObject(rawDraft.timer) ? clone(rawDraft.timer) as unknown as NonNullable<RunnerState["draft"]>["timer"] : undefined,
     };
+  } else if (rawDraft !== undefined) {
+    migrated = true;
+  }
+
+  state.lastBackupAt = typeof raw.lastBackupAt === "string" ? raw.lastBackupAt : undefined;
+  state.sessionsSinceBackup = typeof raw.sessionsSinceBackup === "number" && Number.isFinite(raw.sessionsSinceBackup) && raw.sessionsSinceBackup >= 0 ? raw.sessionsSinceBackup : 0;
+  if (raw.stateVersion !== 2) migrated = true;
+  return { state, migrated };
+}
+
+interface LoadOutcome { state: RunnerState; warning?: string }
+
+function openDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const timeout = window.setTimeout(() => reject(new Error("Timed out opening local workout storage.")), READ_TIMEOUT_MS);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE);
+    };
+    request.onerror = () => { window.clearTimeout(timeout); reject(request.error ?? new Error("Could not open local workout storage.")); };
+    request.onblocked = () => { window.clearTimeout(timeout); reject(new Error("Local workout storage is locked by another app tab.")); };
+    request.onsuccess = () => { window.clearTimeout(timeout); resolve(request.result); };
   });
 }
 
+export async function loadStateDetailed(): Promise<LoadOutcome> {
+  if (!indexedDbAvailable()) return { state: clone(memoryState ?? emptyRunnerState()), warning: "Local storage is unavailable in this browser. Your changes will not survive a refresh." };
+  try {
+    const db = await openDatabase();
+    const raw = await new Promise<unknown>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readonly");
+      const get = tx.objectStore(STORE).get(KEY);
+      const timeout = window.setTimeout(() => reject(new Error("Timed out reading local workout storage.")), READ_TIMEOUT_MS);
+      const finish = (callback: () => void) => { window.clearTimeout(timeout); callback(); };
+      get.onerror = () => finish(() => reject(get.error ?? new Error("Could not read local workout storage.")));
+      get.onsuccess = () => finish(() => resolve(get.result));
+      tx.onerror = () => finish(() => reject(tx.error ?? new Error("Could not read local workout storage.")));
+      tx.onabort = () => finish(() => reject(tx.error ?? new Error("Could not read local workout storage.")));
+    });
+    db.close();
+    const normalized = normalizeRunnerState(raw ?? memoryState ?? emptyRunnerState());
+    if (normalized.migrated) {
+      memoryState = normalized.state;
+      await saveState(normalized.state);
+    }
+    return { state: normalized.state, ...(normalized.warning ? { warning: normalized.warning } : {}) };
+  } catch (error) {
+    const fallback = clone(memoryState ?? emptyRunnerState());
+    return { state: fallback, warning: `${error instanceof Error ? error.message : "Could not read local workout storage."} Import your cycle or restore a backup to continue.` };
+  }
+}
+
+export async function loadState(): Promise<RunnerState> {
+  return (await loadStateDetailed()).state;
+}
+
 export async function saveState(state: RunnerState): Promise<void> {
-  const next = clone(state);
+  const next = clone({ ...state, stateVersion: 2 as const });
   memoryState = next;
   if (!indexedDbAvailable()) return;
-  await new Promise<void>((resolve) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onerror = () => resolve();
-    request.onsuccess = () => {
-      const tx = request.result.transaction(STORE, "readwrite");
+  try {
+    const db = await openDatabase();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
       tx.objectStore(STORE).put(next, KEY);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    };
-  });
+      tx.onerror = () => reject(tx.error ?? new Error("Could not save local workout storage."));
+      tx.onabort = () => reject(tx.error ?? new Error("Could not save local workout storage."));
+    });
+    db.close();
+  } catch {
+    // Keep the in-memory copy; the next visible backup/import action can recover
+    // the data without blocking the workout UI.
+  }
 }
 
 export async function clearState(): Promise<void> { memoryState = emptyRunnerState(); if (!indexedDbAvailable()) return; await saveState(memoryState); }
