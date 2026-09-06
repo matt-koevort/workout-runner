@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-`schemas/cycle.schema.json` is the contract. `src/domain/types.ts` mirrors the contract for TypeScript consumers; runtime validation is performed with the same schema plus domain invariants in `src/domain/validation.ts`.
+`schemas/cycle.schema.json`, `schemas/results.schema.json`, and `schemas/bundle.schema.json` are the versioned contracts. `src/domain/types.ts` mirrors them for TypeScript consumers; Node runtime validation uses AJV plus domain invariants in `src/domain/validation.ts`, while phone imports use the strict browser-safe checks in `src/domain/portable-validation.ts`.
 
 The cycle-generation skill should create one canonical `cycle.json`, validate it, and render Markdown from it. Markdown is a deterministic view for review and archival, not a second editable source of truth. The legacy handwritten cycle remains untouched while parity is established.
 
@@ -36,7 +36,7 @@ Odd strength variants are Weeks 1, 3 and 5; Even variants are Weeks 2 and 4; Wee
 
 ## Results and conflict safety
 
-Results are appendable by workout ID and revision. Import is idempotent for an identical payload, accepts a higher revision, ignores an older revision, and refuses a conflicting same-revision payload. Empty set fields mean “unrecorded”; numeric zero is preserved as an explicit recorded value.
+Results are appendable by workout ID and revision. Import is idempotent for an identical payload, accepts a higher revision, ignores an older revision, and refuses a conflicting same-revision payload. Each set can retain load basis/unit, duration, distance, RIR, RPE and technique. Empty set fields mean “unrecorded”; numeric zero is preserved as an explicit recorded value. A result may carry `cycleRevision` and an immutable `prescriptionSnapshot` so later cycle edits cannot rewrite the prescription that produced the evidence. The browser draft's `load`/`actuals` fields are explicitly schema-listed compatibility fields, not arbitrary extras.
 
 ## Privacy boundary
 
