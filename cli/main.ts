@@ -1,14 +1,10 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { migrate } from "./migrate.js";
 import { emptyResults, readJson, writeJson } from "../src/domain/io.js";
 import { renderCycleMarkdown } from "../src/domain/render.js";
 import { mergeResults, summarizeResults } from "../src/domain/results.js";
 import type { CycleBundle, CycleDocument, ResultsDocument } from "../src/domain/types.js";
 import { assertValid, validateBundle, validateCycle, validateResults } from "../src/domain/validation.js";
-
-const defaultTrainerDir = "/Users/matt/projects/personal-trainer";
-const defaultCycleFile = "2026-09-07-hybrid-hypertrophy-base.json";
 
 function option(args: string[], name: string, fallback?: string): string | undefined {
   const index = args.indexOf(name);
@@ -17,9 +13,10 @@ function option(args: string[], name: string, fallback?: string): string | undef
 
 function positional(args: string[]): string | undefined { return args.find((arg) => !arg.startsWith("--") && !args.slice(0, args.indexOf(arg)).includes("--trainer-dir") && !args.slice(0, args.indexOf(arg)).includes("--output") && !args.slice(0, args.indexOf(arg)).includes("--into")); }
 
-function cyclePath(args: string[]): string {
-  const trainerDir = option(args, "--trainer-dir", defaultTrainerDir)!;
-  return resolve(option(args, "--input") ?? positional(args) ?? resolve(trainerDir, "cycles", defaultCycleFile));
+function requiredPath(args: string[], label: string): string {
+  const path = option(args, "--input") ?? positional(args);
+  if (!path) throw new Error(`Provide ${label} with --input PATH or a positional path.`);
+  return resolve(path);
 }
 
 function printReport(report: { valid: boolean; issues: { path: string; message: string }[] }): void {
@@ -29,24 +26,25 @@ function printReport(report: { valid: boolean; issues: { path: string; message: 
 }
 
 function runValidate(args: string[]): void {
-  const path = cyclePath(args);
+  const path = requiredPath(args, "a cycle");
   const value = readJson<unknown>(path);
   printReport(validateCycle(value));
 }
 
 function runRender(args: string[]): void {
-  const cycle = readJson<CycleDocument>(cyclePath(args));
+  const input = requiredPath(args, "a cycle");
+  const cycle = readJson<CycleDocument>(input);
   assertValid(validateCycle(cycle), "cycle");
-  const output = option(args, "--output") ?? resolve(option(args, "--trainer-dir", defaultTrainerDir)!, "cycles", `${cycle.cycleId}.generated.md`);
+  const output = option(args, "--output") ?? resolve("cycle.md");
   mkdirSync(resolve(output, ".."), { recursive: true });
   writeFileSync(output, renderCycleMarkdown(cycle), "utf8");
   console.log(output);
 }
 
 function runPack(args: string[]): void {
-  const cycle = readJson<CycleDocument>(cyclePath(args));
+  const cycle = readJson<CycleDocument>(requiredPath(args, "a cycle"));
   assertValid(validateCycle(cycle), "cycle");
-  const output = option(args, "--output") ?? resolve(option(args, "--trainer-dir", defaultTrainerDir)!, "cycles", `${cycle.cycleId}.bundle.json`);
+  const output = option(args, "--output") ?? resolve("cycle.bundle.json");
   if (output.split(/[\\/]/).includes("public") || output.includes("/dist/")) throw new Error("Refusing to pack private athlete data into a public/dist asset path");
   const bundle: CycleBundle = { schemaVersion: "1.0", kind: "cycle-bundle", exportedAt: "1970-01-01T00:00:00.000Z", bundleRevision: cycle.revision ?? 1, cycle, results: emptyResults() };
   writeJson(output, bundle);
@@ -56,7 +54,7 @@ function runPack(args: string[]): void {
 function runImportResults(args: string[]): void {
   const incoming = readJson<ResultsDocument>(resolve(option(args, "--input") ?? positional(args) ?? "results.json"));
   assertValid(validateResults(incoming), "incoming results");
-  const output = option(args, "--into") ?? resolve(option(args, "--trainer-dir", defaultTrainerDir)!, "results.json");
+  const output = option(args, "--into") ?? resolve("merged-results.json");
   const existing = existsSync(output) ? readJson<ResultsDocument>(output) : emptyResults();
   assertValid(validateResults(existing), "existing results");
   const merge = mergeResults(existing, incoming);
@@ -66,7 +64,7 @@ function runImportResults(args: string[]): void {
 }
 
 function runSummarize(args: string[]): void {
-  const path = option(args, "--input") ?? positional(args) ?? option(args, "--results", resolve(option(args, "--trainer-dir", defaultTrainerDir)!, "results.json"));
+  const path = option(args, "--input") ?? positional(args) ?? option(args, "--results", "results.json");
   if (!path || !existsSync(path)) { console.log("Completed: 0\nIn progress: 0\nSkipped: 0"); return; }
   const value = readJson<unknown>(path);
   if ((value as { kind?: string }).kind === "cycle-bundle") {
@@ -90,8 +88,7 @@ export function main(args = process.argv.slice(2)): void {
       case "import-results": runImportResults(rest); break;
       case "validate-log": printReport(validateResults(readJson<unknown>(resolve(option(rest, "--input") ?? positional(rest) ?? "results.json")))); break;
       case "summarize": runSummarize(rest); break;
-      case "migrate": console.log(migrate(option(rest, "--trainer-dir", defaultTrainerDir))); break;
-      default: throw new Error("Usage: workout-runner <validate-cycle|render-cycle|package-cycle|validate-log|import-results|summarize|migrate> [--input PATH] [--output PATH]");
+      default: throw new Error("Usage: workout-runner <validate-cycle|render-cycle|package-cycle|validate-log|import-results|summarize> [--input PATH] [--output PATH]");
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);

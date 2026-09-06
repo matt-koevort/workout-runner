@@ -10,8 +10,7 @@
     "build:web": "vite build",
     "preview": "vite preview --outDir dist-web",
     "test": "npm run build && node --test test/**/*.test.js",
-    "cli": "npm run build && node dist/cli/main.js",
-    "migrate": "npm run build && node dist/cli/migrate.js"
+    "cli": "npm run build && node dist/cli/main.js"
   },
   "dependencies": {
     "ajv": "^8.17.1"

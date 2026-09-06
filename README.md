@@ -1,6 +1,6 @@
 # Workout Runner
 
-Workout Runner is a generic, local-first mobile PWA for following a structured cycle and recording actual training. Personal cycles and results are imported at runtime; they are not bundled in the app source or static assets.
+Workout Runner is a generic, local-first mobile PWA for following a structured cycle and recording actual training. User cycles and results are imported at runtime; they are not bundled in the app source or static assets.
 
 ## Run locally
 

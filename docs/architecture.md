@@ -9,7 +9,7 @@ The cycle-generation skill should create one canonical `cycle.json`, validate it
 ## Data flow
 
 ```text
-trainer context + historical patterns
+training context + historical patterns
               ↓
       cycle skill / migration
               ↓
@@ -40,15 +40,14 @@ Results are appendable by workout ID and revision. Import is idempotent for an i
 
 ## Privacy boundary
 
-The migrated cycle is personal data and is written to the trainer repository's `cycles/` directory. It is not copied into a public static asset directory. `pack` refuses output paths containing `public` or `/dist/`, and the PWA should import bundles at runtime from local storage rather than import personal cycles at build time. Generic source code can be published; personal cycle/results files cannot.
+Cycle documents and workout results are user data. The public runner never bundles them into static assets; it imports them at runtime into local storage. `pack` refuses output paths containing `public` or `/dist/` so a caller does not accidentally publish a private bundle.
 
 ## CLI
 
 ```text
-npm run migrate -- --trainer-dir /Users/matt/projects/personal-trainer
-npm run cli -- validate --trainer-dir /Users/matt/projects/personal-trainer
-npm run cli -- render --trainer-dir /Users/matt/projects/personal-trainer --output /tmp/cycle.md
-npm run cli -- pack --trainer-dir /Users/matt/projects/personal-trainer --output /tmp/cycle.bundle.json
+npm run cli -- validate-cycle --input path/to/cycle.json
+npm run cli -- render-cycle --input path/to/cycle.json --output /tmp/cycle.md
+npm run cli -- package-cycle --input path/to/cycle.json --output /tmp/cycle.bundle.json
 npm run cli -- import-results /tmp/results.json --into /tmp/results.merged.json
 npm run cli -- summarize /tmp/results.merged.json
 ```

@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildCurrentCycle } from "../dist/src/domain/cycle-builder.js";
+import { buildFixtureCycle } from "./fixture-cycle.js";
 import { renderCycleMarkdown } from "../dist/src/domain/render.js";
 import { blankSetIsUnrecorded, mergeResults } from "../dist/src/domain/results.js";
 import { validateCycle } from "../dist/src/domain/validation.js";
 import { validateBundle, validateResults } from "../dist/src/domain/validation.js";
 import { validateBundlePortable, validateResultsPortable } from "../dist/src/domain/portable-validation.js";
 
-test("current migration is a valid fully expanded six-week cycle", () => {
-  const cycle = buildCurrentCycle();
+test("fixture cycle is a valid fully expanded six-week cycle", () => {
+  const cycle = buildFixtureCycle();
   assert.equal(validateCycle(cycle).valid, true);
   assert.equal(cycle.lengthWeeks, 6);
   assert.equal(cycle.sessions.length, 30);
@@ -20,7 +20,7 @@ test("current migration is a valid fully expanded six-week cycle", () => {
 });
 
 test("expanded sessions have unique stable block and exercise IDs", () => {
-  const cycle = buildCurrentCycle();
+  const cycle = buildFixtureCycle();
   const blockIds = cycle.sessions.flatMap((session) => session.blocks.map((block) => block.blockId));
   const exerciseIds = cycle.sessions.flatMap((session) => session.blocks.flatMap((block) => block.items.map((item) => item.exerciseId)));
   assert.equal(new Set(blockIds).size, blockIds.length);
@@ -32,7 +32,7 @@ test("expanded sessions have unique stable block and exercise IDs", () => {
 });
 
 test("bench starts unrecorded and never invents a load", () => {
-  const cycle = buildCurrentCycle();
+  const cycle = buildFixtureCycle();
   const bench = cycle.sessions[0].mainLift;
   assert.ok(bench);
   assert.equal(bench.plannedLoad?.kind, "none");
@@ -41,7 +41,7 @@ test("bench starts unrecorded and never invents a load", () => {
 });
 
 test("strength lineage points to the intended prior odd/even instances", () => {
-  const cycle = buildCurrentCycle();
+  const cycle = buildFixtureCycle();
   for (const sequence of [1, 3, 4]) {
     const w3 = cycle.sessions.find((session) => session.weekNumber === 3 && session.sequence === sequence);
     const w5 = cycle.sessions.find((session) => session.weekNumber === 5 && session.sequence === sequence);
@@ -53,20 +53,20 @@ test("strength lineage points to the intended prior odd/even instances", () => {
 });
 
 test("expanded accessory blocks preserve pair membership, rounds and lower logistics", () => {
-  const cycle = buildCurrentCycle();
+  const cycle = buildFixtureCycle();
   const upper = cycle.sessions.find((session) => session.weekNumber === 1 && session.sequence === 1);
   const upperAccessories = upper.blocks.filter((block) => block.kind === "accessory");
   assert.deepEqual(upperAccessories.map((block) => [block.items.map((item) => item.name), block.rounds, block.restAfterRoundSeconds]), [
-    [["Incline DB press", "Chest-supported DB row"], 3, 90],
-    [["Low-to-high cable fly", "Cable face pull"], 2, 75],
+    [["Incline press", "Supported row"], 3, 90],
+    [["Cable fly", "Face pull"], 2, 75],
   ]);
   const lower = cycle.sessions.find((session) => session.weekNumber === 1 && session.sequence === 3);
-  assert.deepEqual(lower.blocks.filter((block) => block.kind === "accessory").map((block) => block.label), ["Hip thrust — straight sets", "Leg curl + leg extension — alternate", "Split squat tolerance work — straight sets"]);
-  assert.equal(lower.blocks.some((block) => block.label === "Odd accessory pairing"), false);
+  assert.deepEqual(lower.blocks.filter((block) => block.kind === "accessory").map((block) => block.label), ["Hip bridge — straight sets", "Hamstring curl + leg extension — alternate", "Split-stance tolerance work — straight sets"]);
+  assert.equal(lower.blocks.some((block) => block.label === "Generic accessory pairing"), false);
 });
 
 test("main lift RIR fields agree with prescriptions and W1 remains a true baseline", () => {
-  const cycle = buildCurrentCycle();
+  const cycle = buildFixtureCycle();
   for (const session of cycle.sessions.filter((candidate) => candidate.kind === "strength")) {
     const report = validateCycle(cycle);
     assert.equal(report.valid, true);
@@ -79,12 +79,12 @@ test("main lift RIR fields agree with prescriptions and W1 remains a true baseli
   }
   const w1Upper = cycle.sessions.find((session) => session.weekNumber === 1 && session.sequence === 1);
   const prep = w1Upper.blocks.find((block) => block.kind === "preparation").items[0].prescription;
-  assert.match(prep, /2 minutes easy row or SkiErg.*thread-the-needle.*band dislocates.*scapular push-ups.*band pull-aparts.*2-3 ramp-up sets/s);
+  assert.match(prep, /Easy cardio.*mobility.*ramp-up sets/s);
   assert.match(w1Upper.blocks.find((block) => block.kind === "finisher").items[0].progression, /Establish a repeatable baseline/);
 });
 
 test("upper finishers are ten minutes and follow direct arm work; deload omits them", () => {
-  const cycle = buildCurrentCycle();
+  const cycle = buildFixtureCycle();
   for (const session of cycle.sessions.filter((candidate) => candidate.kind === "strength" && candidate.name.startsWith("Upper"))) {
     const arm = session.blocks.find((block) => block.kind === "arm");
     const finisher = session.blocks.find((block) => block.kind === "finisher");
@@ -107,13 +107,13 @@ test("results merge is idempotent and conflict-safe by workoutId/revision", () =
 test("blank is not zero and Markdown rendering is deterministic", () => {
   assert.equal(blankSetIsUnrecorded({}), true);
   assert.equal(blankSetIsUnrecorded({ loadKg: 0, reps: 0 }), false);
-  const cycle = buildCurrentCycle();
+  const cycle = buildFixtureCycle();
   assert.equal(renderCycleMarkdown(cycle), renderCycleMarkdown(cycle));
   assert.match(renderCycleMarkdown(cycle), /Week 6 — Deload/);
 });
 
 test("results schema round-trips rich actual fields and immutable prescription metadata", () => {
-  const cycle = buildCurrentCycle();
+  const cycle = buildFixtureCycle();
   const session = cycle.sessions[0];
   const result = {
     workoutId: session.sessionId,
@@ -122,8 +122,8 @@ test("results schema round-trips rich actual fields and immutable prescription m
     revision: 1,
     cycleRevision: cycle.revision,
     status: "complete",
-    startedAt: "2026-09-07T08:00:00.000Z",
-    completedAt: "2026-09-07T08:47:00.000Z",
+    startedAt: "2025-01-06T08:00:00.000Z",
+    completedAt: "2025-01-06T08:47:00.000Z",
     prescriptionSnapshot: session,
     exercises: [{ exerciseId: session.mainLift.exerciseId, name: session.mainLift.name, sets: [{ setNumber: 1, loadKg: 80, load: 80, loadBasis: "barbell", unit: "kg", reps: 8, durationSeconds: 42, distanceMeters: 0, rir: 3, rpe: 7, completed: true, technique: "clean", note: "smooth" }] }],
     actuals: { [session.mainLift.exerciseId]: [{ setNumber: 1, load: 80, loadBasis: "barbell", unit: "kg", reps: 8, rir: 3, rpe: 7, completed: true, technique: "clean" }] },
@@ -138,7 +138,7 @@ test("results schema round-trips rich actual fields and immutable prescription m
 });
 
 test("results and bundles reject unknown fields in Node and browser validators", () => {
-  const cycle = buildCurrentCycle();
+  const cycle = buildFixtureCycle();
   const session = cycle.sessions[0];
   const baseResult = { workoutId: session.sessionId, cycleId: cycle.cycleId, sessionId: session.sessionId, revision: 1, status: "in-progress", exercises: [{ exerciseId: "x", name: "x", sets: [{ setNumber: 1 }] }] };
   const withUnknownSet = { schemaVersion: "1.0", kind: "results", results: [{ ...baseResult, exercises: [{ ...baseResult.exercises[0], sets: [{ setNumber: 1, mystery: true }] }] }] };

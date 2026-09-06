@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildCurrentCycle } from "../dist/src/domain/cycle-builder.js";
+import { buildFixtureCycle } from "./fixture-cycle.js";
 import { applyImport } from "../dist/src/app/imports.js";
 import { coreSessions, nextCoreSession } from "../dist/src/app/sequence.js";
 import { currentInterval, makeTimer, timerRemaining } from "../dist/src/timers/timers.js";
 import { stateToBundle } from "../dist/src/storage/db.js";
 
-const cycle = buildCurrentCycle();
+const cycle = buildFixtureCycle();
 const base = { cycle, results: { schemaVersion: "1.0", kind: "results", results: [] }, sessionsSinceBackup: 0 };
 
 test("core sequence advances only after explicit complete or skip", () => {
@@ -31,7 +31,7 @@ test("timer restoration uses timestamps rather than a decrementing counter", () 
   assert.equal(currentInterval(emom, 62_000).round, 2);
 });
 
-test("export bundle round-trips cycle and results without personal public fixtures", () => {
+test("export bundle round-trips cycle and results without bundled user data", () => {
   const state = { ...base, results: { ...base.results, results: [{ workoutId: "w", cycleId: cycle.cycleId, sessionId: coreSessions(cycle)[0].sessionId, revision: 1, status: "complete", exercises: [] }] } };
   const bundle = stateToBundle(state);
   assert.equal(bundle?.kind, "cycle-bundle");
