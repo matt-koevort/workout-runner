@@ -1,11 +1,34 @@
 import type { CycleDocument, WorkoutResult, WorkoutSession } from "../domain/types.js";
 
+export type SessionStatus = "upcoming" | "in-progress" | "completed" | "skipped" | "abandoned";
+
 export function coreSessions(cycle: CycleDocument): WorkoutSession[] {
   return [...cycle.sessions].sort((a, b) => a.weekNumber - b.weekNumber || a.sequence - b.sequence);
 }
 
 export function completedCoreIds(results: { results: WorkoutResult[] }): Set<string> {
   return new Set(results.results.filter((result) => result.status === "complete" || result.status === "skipped").map((result) => result.sessionId));
+}
+
+/** Return the core sessions in one week, in their prescribed order. */
+export function sessionsForWeek(cycle: CycleDocument, weekNumber: number): WorkoutSession[] {
+  return coreSessions(cycle).filter((session) => session.weekNumber === weekNumber);
+}
+
+/** UI-facing status for a session. The active draft is authoritative for an in-progress session. */
+export function sessionStatus(session: WorkoutSession, results: { results: WorkoutResult[] }, activeSessionId?: string): SessionStatus {
+  if (activeSessionId === session.sessionId) return "in-progress";
+  const result = results.results
+    .filter((candidate) => candidate.sessionId === session.sessionId)
+    .sort((a, b) => b.revision - a.revision)[0];
+  if (!result) return "upcoming";
+  if (result.status === "complete") return "completed";
+  if (result.status === "skipped") return "skipped";
+  return "in-progress";
+}
+
+export function sessionIsIncomplete(status: SessionStatus): boolean {
+  return status === "upcoming" || status === "in-progress";
 }
 
 /** Explicit completion controls progression. In-progress results do not advance the sequence. */

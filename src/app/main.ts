@@ -3,7 +3,7 @@ import type { ExercisePrescription, WorkoutResult, WorkoutSession } from "../dom
 import { loadState, saveState, stateToBundle } from "../storage/db.js";
 import type { RunnerState, SessionDraft, SetActual } from "../storage/types.js";
 import { applyImport, ImportError, parseJson } from "./imports.js";
-import { coreSessions, nextCoreSession, previousExerciseResult, sessionProgress } from "./sequence.js";
+import { coreSessions, nextCoreSession, previousExerciseResult, sessionProgress, sessionStatus, sessionsForWeek, type SessionStatus } from "./sequence.js";
 import { formatSeconds, makeTimer, timerComplete, timerRemaining, currentInterval } from "../timers/timers.js";
 
 const appRoot = document.querySelector<HTMLDivElement>("#app")!;
@@ -16,7 +16,9 @@ const inputValue = (value: unknown): string => value === undefined || value === 
 
 class WorkoutRunner {
   private state: RunnerState = { results: { schemaVersion: "1.0", kind: "results", results: [] }, sessionsSinceBackup: 0 };
-  private view: "home" | "session" = "home";
+  private view: "home" | "weeks" | "session" | "preview" = "home";
+  private selectedWeek = 1;
+  private previewSession?: WorkoutSession;
   private timerHandle?: number;
   private message = "";
   private restoreFocusOnNextRender = false;
@@ -24,6 +26,7 @@ class WorkoutRunner {
 
   async start(): Promise<void> {
     this.state = await loadState();
+    if (this.state.cycle) this.selectedWeek = sessionProgress(this.state.cycle, this.state.results).week;
     this.render();
     navigator.serviceWorker?.register("./sw.js").catch(() => undefined);
   }
@@ -33,7 +36,13 @@ class WorkoutRunner {
 
   private render(): void {
     if (this.timerHandle) window.clearInterval(this.timerHandle);
-    appRoot.innerHTML = this.view === "session" && this.state.draft ? this.sessionHtml(this.state.draft.prescriptionSnapshot) : this.homeHtml();
+    appRoot.innerHTML = this.view === "session" && this.state.draft
+      ? this.sessionHtml(this.state.draft.prescriptionSnapshot)
+      : this.view === "preview" && this.previewSession
+        ? this.previewHtml(this.previewSession)
+        : this.view === "weeks"
+          ? this.weeksHtml()
+          : this.homeHtml();
     this.bind();
     if (this.restoreFocusOnNextRender && this.state.draft) {
       this.restoreFocusOnNextRender = false;
@@ -66,7 +75,37 @@ class WorkoutRunner {
     const draft = this.state.draft;
     const done = this.state.results.results.filter((result) => result.status === "complete").length;
     const recovery = cycle.optionalRecovery ? `<section class="progress-card"><span class="eyebrow">OPTIONAL RECOVERY · NEVER ADVANCES THE CYCLE</span><strong>${esc(cycle.optionalRecovery.name)}</strong><p class="muted">${cycle.optionalRecovery.choices.map((choice) => esc(choice)).join(" · ")}</p></section>` : "";
-    return `<main class="shell"><header class="topbar"><div><span class="eyebrow">WORKOUT RUNNER</span><h1>${esc(cycle.name)}</h1></div><button class="icon-button" data-action="show-help" aria-label="About this app">?</button></header>${this.messageHtml()}<section class="progress-card"><div><span class="eyebrow">CURRENT CYCLE</span><strong>Week ${progress.week} · ${progress.done}/${progress.total} sessions</strong></div><div class="progress-track"><span style="width:${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%"></span></div></section>${draft ? `<section class="resume-card"><span class="eyebrow">IN PROGRESS</span><h2>${esc(draft.prescriptionSnapshot.name)}</h2><p>Pick up where you left off. Your entries are saved after every edit.</p><button class="button primary" data-action="resume">Resume session</button><button class="button text" data-action="abandon">Abandon draft</button></section>` : next ? `<section class="next-card"><span class="eyebrow">NEXT UP · WEEK ${next.weekNumber}</span><h2>${esc(next.name)}</h2><p>${esc(next.kind)} · ${next.targetDurationMinutes ? `${next.targetDurationMinutes} min` : "self-paced"}</p><button class="button primary" data-action="start" data-session="${esc(next.sessionId)}">Start workout</button></section>` : `<section class="next-card"><span class="eyebrow">CYCLE COMPLETE</span><h2>Nice work.</h2><p>You have completed every core session in this cycle.</p></section>`}${recovery}<section class="quick-actions"><button class="button secondary" data-action="import">Import cycle / results</button><button class="button secondary" data-action="export">Export backup</button><input id="restore-file" hidden type="file" accept=".json,application/json" /><button class="button secondary" data-action="restore">Restore from file</button></section><section class="home-foot"><p>${done ? `${done} completed session${done === 1 ? "" : "s"}.` : "Ready when you are."} ${this.state.sessionsSinceBackup >= 5 ? "Back up your results when convenient." : ""}</p><button class="button text" data-action="show-sessions">View cycle sessions</button></section></main>`;
+    return `<main class="shell"><header class="topbar"><div><span class="eyebrow">WORKOUT RUNNER</span><h1>${esc(cycle.name)}</h1></div><button class="icon-button" data-action="show-help" aria-label="About this app">?</button></header>${this.messageHtml()}<nav class="view-tabs" aria-label="Workout views"><button class="view-tab active" data-action="show-today">Today</button><button class="view-tab" data-action="show-weeks">Weeks</button></nav><section class="progress-card"><div><span class="eyebrow">CURRENT CYCLE</span><strong>Week ${progress.week} · ${progress.done}/${progress.total} sessions</strong></div><div class="progress-track"><span style="width:${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%"></span></div></section>${draft ? `<section class="resume-card"><span class="eyebrow">IN PROGRESS</span><h2>${esc(draft.prescriptionSnapshot.name)}</h2><p>Pick up where you left off. Your entries are saved after every edit.</p><button class="button primary" data-action="resume">Resume session</button><button class="button text" data-action="abandon">Abandon draft</button></section>` : next ? `<section class="next-card"><span class="eyebrow">NEXT UP · WEEK ${next.weekNumber}</span><h2>${esc(next.name)}</h2><p>${esc(next.kind)} · ${next.targetDurationMinutes ? `${next.targetDurationMinutes} min` : "self-paced"}</p><button class="button primary" data-action="start" data-session="${esc(next.sessionId)}">Start workout</button><button class="button text" data-action="preview" data-session="${esc(next.sessionId)}">View details</button></section>` : `<section class="next-card"><span class="eyebrow">CYCLE COMPLETE</span><h2>Nice work.</h2><p>You have completed every core session in this cycle.</p></section>`}${recovery}<section class="quick-actions"><button class="button secondary" data-action="import">Import cycle / results</button><button class="button secondary" data-action="export">Export backup</button><input id="restore-file" hidden type="file" accept=".json,application/json" /><button class="button secondary" data-action="restore">Restore from file</button></section><section class="home-foot"><p>${done ? `${done} completed session${done === 1 ? "" : "s"}.` : "Ready when you are."} ${this.state.sessionsSinceBackup >= 5 ? "Back up your results when convenient." : ""}</p></section></main>`;
+  }
+
+  private weeksHtml(): string {
+    const cycle = this.state.cycle!;
+    const week = Math.max(1, Math.min(cycle.lengthWeeks, this.selectedWeek));
+    const sessions = sessionsForWeek(cycle, week);
+    const activeSessionId = this.state.draft?.sessionId;
+    return `<main class="shell"><header class="topbar"><div><span class="eyebrow">WORKOUT RUNNER</span><h1>Choose a week</h1></div><button class="icon-button" data-action="show-help" aria-label="About this app">?</button></header>${this.messageHtml()}<nav class="view-tabs" aria-label="Workout views"><button class="view-tab" data-action="show-today">Today</button><button class="view-tab active" data-action="show-weeks">Weeks</button></nav><div class="week-picker" role="tablist" aria-label="Cycle weeks">${Array.from({ length: cycle.lengthWeeks }, (_, index) => { const number = index + 1; return `<button class="week-chip ${number === week ? "selected" : ""}" role="tab" aria-selected="${number === week}" data-action="select-week" data-week="${number}">W${number}</button>`; }).join("")}</div><section class="week-heading"><div><span class="eyebrow">WEEK ${week}</span><h2>${esc(cycle.weeks.find((candidate) => candidate.weekNumber === week)?.label ?? `Week ${week}`)}</h2></div><p class="muted">Choose any incomplete session. Starting out of order does not skip earlier sessions.</p></section><section class="session-list">${sessions.map((session) => this.sessionCardHtml(session, activeSessionId)).join("")}</section>${cycle.optionalRecovery ? `<section class="recovery-section"><span class="eyebrow">OPTIONAL · DOES NOT ADVANCE THE CYCLE</span><article class="session-card recovery-card"><div><h3>${esc(cycle.optionalRecovery.name)}</h3><p>${cycle.optionalRecovery.choices.map((choice) => esc(choice)).join(" · ")}</p></div><span class="status-pill">optional</span></article></section>` : ""}</main>`;
+  }
+
+  private sessionCardHtml(session: WorkoutSession, activeSessionId?: string): string {
+    const status = sessionStatus(session, this.state.results, activeSessionId);
+    const statusLabel: Record<SessionStatus, string> = { upcoming: "Upcoming", "in-progress": "In progress", completed: "Completed", skipped: "Skipped", abandoned: "Abandoned" };
+    const result = this.state.results.results.find((candidate) => candidate.sessionId === session.sessionId);
+    const isIncomplete = status === "upcoming" || status === "in-progress";
+    const action = status === "in-progress" ? "Resume" : status === "completed" || status === "skipped" ? "Review" : "Start";
+    return `<article class="session-card"><div class="session-card-main"><div><span class="eyebrow">${esc(session.kind)}${session.targetDurationMinutes ? ` · ${session.targetDurationMinutes} MIN` : ""}</span><h3>${esc(session.name)}</h3><p>${session.blocks.length} blocks · ${session.blocks.flatMap((block) => block.items).length} exercises</p></div><span class="status-pill status-${status}">${statusLabel[status]}</span></div><div class="session-card-actions"><button class="button text" data-action="preview" data-session="${esc(session.sessionId)}">View details</button>${isIncomplete ? `<button class="button ${status === "in-progress" ? "secondary" : "primary"}" data-action="${status === "in-progress" ? "resume-session" : "start"}" data-session="${esc(session.sessionId)}">${action}</button>` : `<button class="button secondary" data-action="review" data-session="${esc(session.sessionId)}">${action}</button>`}</div>${result?.completedAt ? `<small class="session-date">${status === "completed" ? "Completed" : "Skipped"} ${new Date(result.completedAt).toLocaleDateString()}</small>` : ""}</article>`;
+  }
+
+  private previewHtml(session: WorkoutSession): string {
+    const status = sessionStatus(session, this.state.results, this.state.draft?.sessionId);
+    const active = this.state.draft?.sessionId === session.sessionId;
+    return `<main class="shell"><header class="session-header"><button class="back-button" data-action="show-weeks">‹</button><div><span class="eyebrow">WEEK ${session.weekNumber} · ${session.kind.toUpperCase()}</span><h1>${esc(session.name)}</h1></div><button class="icon-button" data-action="show-help" aria-label="About this app">?</button></header>${this.messageHtml()}<section class="preview-summary"><span class="status-pill status-${status}">${status.replace("-", " ")}</span><p>${esc(session.notes?.[0] ?? "Review the session below before deciding when to start it.")}</p></section>${this.resultReviewHtml(session)}<div class="blocks preview-blocks">${[...session.blocks].sort((a, b) => a.order - b.order).map((block) => `<section class="block"><div class="block-heading preview-heading"><span><span class="eyebrow">${esc(block.kind)}</span><strong>${esc(block.label)}</strong><small>${[block.format, block.durationMinutes ? `${block.durationMinutes} min` : "", block.rounds ? `${block.rounds} rounds` : ""].filter(Boolean).join(" · ")}</small></span></div><div class="block-body">${block.items.length ? block.items.map((item) => `<div class="preview-exercise"><strong>${esc(item.name)}</strong><span>${esc(item.prescription)}</span></div>`).join("") : `<p class="muted">${esc(block.format ?? "Complete as noted above.")}</p>`}</div></section>`).join("")}</div><section class="session-actions">${active ? `<button class="button primary" data-action="resume">Resume session</button>` : status === "upcoming" ? `<button class="button primary" data-action="start" data-session="${esc(session.sessionId)}">Start this session</button>` : status === "in-progress" ? `<button class="button primary" data-action="resume-session" data-session="${esc(session.sessionId)}">Resume session</button>` : `<button class="button secondary" data-action="review" data-session="${esc(session.sessionId)}">Review result</button>`}</section></main>`;
+  }
+
+  private resultReviewHtml(session: WorkoutSession): string {
+    const result = this.state.results.results.filter((candidate) => candidate.sessionId === session.sessionId).sort((a, b) => b.revision - a.revision)[0];
+    if (!result || result.status === "in-progress" && !result.exercises.length) return "";
+    const lines = result.exercises.flatMap((exercise) => exercise.sets.map((set) => `${esc(exercise.name)} · Set ${set.setNumber}: ${[set.loadKg !== undefined ? `${set.loadKg} kg` : "", set.reps !== undefined ? `${set.reps} reps` : "", set.rir !== undefined ? `${set.rir} RIR` : ""].filter(Boolean).join(" · ") || "recorded"}`));
+    return `<section class="result-review"><span class="eyebrow">RECORDED RESULT · PROTECTED</span>${lines.length ? lines.map((line) => `<p>${line}</p>`).join("") : `<p class="muted">No set details were recorded.</p>`}</section>`;
   }
 
   private sessionHtml(session: WorkoutSession): string {
@@ -176,6 +215,7 @@ class WorkoutRunner {
       ...(status === "complete" || status === "skipped" ? { completedAt: new Date().toISOString() } : {}),
       status,
       exercises,
+      actuals: clone(draft.actuals),
       notes: draft.notes,
       ...( { prescriptionSnapshot: clone(draft.prescriptionSnapshot) } as any),
     };
@@ -185,9 +225,14 @@ class WorkoutRunner {
     if (action === "import") { appRoot.querySelector<HTMLInputElement>("#cycle-file")?.click() ?? this.clickHiddenFile(); return; }
     if (action === "restore") { appRoot.querySelector<HTMLInputElement>("#restore-file")?.click(); return; }
     if (action === "export") { await this.exportBackup(); return; }
-    if (action === "home") { this.view = "home"; this.render(); return; }
+    if (action === "home" || action === "show-today") { this.view = "home"; this.previewSession = undefined; this.render(); return; }
+    if (action === "show-weeks") { this.view = "weeks"; this.previewSession = undefined; this.render(); return; }
+    if (action === "select-week") { this.selectedWeek = Number(element.dataset.week) || 1; this.view = "weeks"; this.render(); return; }
     if (action === "resume") { this.view = "session"; this.restoreFocusOnNextRender = true; this.render(); return; }
-    if (action === "start") { const session = this.state.cycle?.sessions.find((candidate) => candidate.sessionId === element.dataset.session); if (session) { this.startDraft(session); this.view = "session"; this.restoreFocusOnNextRender = true; this.render(); } return; }
+    if (action === "preview") { const session = this.state.cycle?.sessions.find((candidate) => candidate.sessionId === element.dataset.session); if (session) { this.previewSession = session; this.view = "preview"; this.render(); } return; }
+    if (action === "review") { const session = this.state.cycle?.sessions.find((candidate) => candidate.sessionId === element.dataset.session); if (session) { this.previewSession = session; this.view = "preview"; this.render(); } return; }
+    if (action === "resume-session") { const session = this.state.cycle?.sessions.find((candidate) => candidate.sessionId === element.dataset.session); if (session) { if (this.state.draft && this.state.draft.sessionId !== session.sessionId) { this.notify(`Finish or abandon ${this.state.draft.prescriptionSnapshot.name} before resuming another session.`); return; } if (!this.state.draft) this.startDraft(session); this.view = "session"; this.previewSession = undefined; this.restoreFocusOnNextRender = true; this.render(); } return; }
+    if (action === "start") { const session = this.state.cycle?.sessions.find((candidate) => candidate.sessionId === element.dataset.session); if (session) { if (this.state.draft) { this.notify(`Finish or abandon ${this.state.draft.prescriptionSnapshot.name} before starting another session.`); return; } const status = sessionStatus(session, this.state.results); if (status === "completed" || status === "skipped") { this.notify("That session is already recorded and is protected from changes."); return; } this.startDraft(session); this.view = "session"; this.restoreFocusOnNextRender = true; this.render(); } return; }
     if (action === "complete" || action === "skip") { await this.finish(action === "complete" ? "complete" : "skipped"); return; }
     if (action === "abandon") { if (confirm("Abandon this in-progress workout? Your recorded values will be removed.")) { if (this.state.draft) this.state.results.results = this.state.results.results.filter((result) => result.workoutId !== this.state.draft?.workoutId); this.state.draft = undefined; await this.persist(); this.view = "home"; this.notify("Draft abandoned."); } return; }
     if (action === "toggle-block") { const id = element.dataset.block!; const draft = this.state.draft!; draft.collapsedBlocks = draft.collapsedBlocks.includes(id) ? draft.collapsedBlocks.filter((x) => x !== id) : [...draft.collapsedBlocks, id]; await this.persist(); this.render(); return; }
@@ -199,10 +244,17 @@ class WorkoutRunner {
   }
 
   private clickHiddenFile(): void { const input = document.createElement("input"); input.type = "file"; input.accept = ".json,application/json"; input.addEventListener("change", (event) => void this.fileImport(event)); input.click(); }
-  private startDraft(session: WorkoutSession): void { this.state.draft = { workoutId: session.sessionId, cycleId: session.cycleId, sessionId: session.sessionId, prescriptionSnapshot: clone(session), startedAt: new Date().toISOString(), status: "in-progress", actuals: {}, focusedBlockId: session.blocks[0]?.blockId, collapsedBlocks: [], notes: [] }; void this.saveDraft(); }
+  private startDraft(session: WorkoutSession): void {
+    const prior = this.state.results.results.find((candidate) => candidate.sessionId === session.sessionId && candidate.status === "in-progress");
+    const actuals = prior?.actuals ?? Object.fromEntries(prior?.exercises.map((exercise) => [exercise.exerciseId, exercise.sets.map((set) => ({
+      setNumber: set.setNumber, ...(set.loadKg !== undefined ? { load: set.loadKg } : {}), ...(set.loadBasis ? { loadBasis: set.loadBasis } : {}), ...(set.unit ? { unit: set.unit } : {}), ...(set.reps !== undefined ? { reps: set.reps } : {}), ...(set.durationSeconds !== undefined ? { durationSeconds: set.durationSeconds } : {}), ...(set.distanceMeters !== undefined ? { distanceMeters: set.distanceMeters } : {}), ...(set.rir !== undefined ? { rir: set.rir } : {}), ...(set.rpe !== undefined ? { rpe: set.rpe } : {}), ...(set.completed !== undefined ? { completed: set.completed } : {}), ...(set.technique ? { technique: set.technique } : {}), ...(set.note ? { note: set.note } : {})
+    }))]) ?? []);
+    this.state.draft = { workoutId: session.sessionId, cycleId: session.cycleId, sessionId: session.sessionId, prescriptionSnapshot: clone(prior?.prescriptionSnapshot ?? session), startedAt: prior?.startedAt ?? new Date().toISOString(), status: "in-progress", actuals, focusedBlockId: session.blocks[0]?.blockId, collapsedBlocks: [], notes: prior?.notes ?? [] };
+    void this.saveDraft();
+  }
   private async finish(status: "complete" | "skipped"): Promise<void> { if (!this.state.draft) return; this.state.draft.status = status; await this.saveDraft(); this.state.draft = undefined; this.state.sessionsSinceBackup += 1; await this.persist(); this.view = "home"; this.notify(status === "complete" ? "Session saved. The next session is ready when you are." : "Session skipped. The sequence will continue from the next session."); }
   private async exportBackup(): Promise<void> { const bundle = stateToBundle(this.state); if (!bundle) { this.notify("Import a cycle before exporting a backup."); return; } const body = JSON.stringify(bundle, null, 2); const file = new File([body], `${bundle.cycle.cycleId}.backup.json`, { type: "application/json" }); try { if (navigator.share && navigator.canShare?.({ files: [file] })) await navigator.share({ title: "Workout Runner backup", files: [file] }); else throw new Error("share unavailable"); } catch { const url = URL.createObjectURL(file); const link = document.createElement("a"); link.href = url; link.download = file.name; link.click(); URL.revokeObjectURL(url); } this.state.lastBackupAt = new Date().toISOString(); this.state.sessionsSinceBackup = 0; await this.persist(); this.notify("Backup ready."); }
-  private async fileImport(event: Event): Promise<void> { const input = event.currentTarget as HTMLInputElement; const file = input.files?.[0]; if (!file) return; try { const parsed = parseJson(await file.text()); const next = applyImport(this.state, parsed); this.state = next; await this.persist(); this.view = "home"; this.notify("Import complete. Your existing data was kept where it did not conflict."); } catch (error) { this.notify(error instanceof ImportError ? error.message : "Import failed; existing data was not changed."); } finally { input.value = ""; } }
+  private async fileImport(event: Event): Promise<void> { const input = event.currentTarget as HTMLInputElement; const file = input.files?.[0]; if (!file) return; try { const parsed = parseJson(await file.text()); const next = applyImport(this.state, parsed); this.state = next; if (this.state.cycle) this.selectedWeek = sessionProgress(this.state.cycle, this.state.results).week; await this.persist(); this.view = "home"; this.notify("Import complete. Your existing data was kept where it did not conflict."); } catch (error) { this.notify(error instanceof ImportError ? error.message : "Import failed; existing data was not changed."); } finally { input.value = ""; } }
 }
 
 void new WorkoutRunner().start();

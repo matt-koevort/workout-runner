@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildFixtureCycle } from "./fixture-cycle.js";
 import { applyImport } from "../dist/src/app/imports.js";
-import { coreSessions, nextCoreSession } from "../dist/src/app/sequence.js";
+import { coreSessions, nextCoreSession, sessionStatus, sessionsForWeek } from "../dist/src/app/sequence.js";
 import { currentInterval, makeTimer, timerRemaining } from "../dist/src/timers/timers.js";
 import { stateToBundle } from "../dist/src/storage/db.js";
 
@@ -16,6 +16,30 @@ test("core sequence advances only after explicit complete or skip", () => {
   assert.equal(nextCoreSession(cycle, complete.results)?.sessionId, first.sessionId, "in-progress cannot advance");
   complete.results.results[0].status = "complete";
   assert.notEqual(nextCoreSession(cycle, complete.results)?.sessionId, first.sessionId);
+});
+
+test("week browser returns only the selected week's sessions in order", () => {
+  assert.deepEqual(sessionsForWeek(cycle, 1).map((session) => session.weekNumber), [1, 1, 1, 1, 1]);
+  assert.deepEqual(sessionsForWeek(cycle, 2).map((session) => session.sequence), [1, 2, 3, 4, 5]);
+  assert.deepEqual(sessionsForWeek(cycle, 99), []);
+});
+
+test("session statuses distinguish upcoming, active, complete and skipped", () => {
+  const [first, second, third] = coreSessions(cycle);
+  const results = { results: [
+    { workoutId: second.sessionId, cycleId: cycle.cycleId, sessionId: second.sessionId, revision: 1, status: "complete", exercises: [] },
+    { workoutId: third.sessionId, cycleId: cycle.cycleId, sessionId: third.sessionId, revision: 1, status: "skipped", exercises: [] },
+  ] };
+  assert.equal(sessionStatus(first, results), "upcoming");
+  assert.equal(sessionStatus(second, results), "completed");
+  assert.equal(sessionStatus(third, results), "skipped");
+  assert.equal(sessionStatus(first, results, first.sessionId), "in-progress");
+});
+
+test("out-of-order completion does not skip the earliest incomplete session", () => {
+  const [first, second] = coreSessions(cycle);
+  const results = { results: [{ workoutId: second.sessionId, cycleId: cycle.cycleId, sessionId: second.sessionId, revision: 1, status: "complete", exercises: [] }] };
+  assert.equal(nextCoreSession(cycle, results)?.sessionId, first.sessionId);
 });
 
 test("malformed imports are atomic", () => {
