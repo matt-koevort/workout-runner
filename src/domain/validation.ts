@@ -46,6 +46,8 @@ function ajvIssues(errors: ErrorObject[] | null | undefined): ValidationIssue[] 
 function domainIssues(cycle: CycleDocument): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const sessionIds = new Set<string>();
+  const blockIds = new Set<string>();
+  const exerciseIds = new Set<string>();
   const byWeek = new Map<number, WorkoutSession[]>();
   for (const session of cycle.sessions) {
     if (session.cycleId !== cycle.cycleId) issues.push({ path: `/sessions/${session.sequence}`, message: "session cycleId must match cycleId" });
@@ -56,6 +58,14 @@ function domainIssues(cycle: CycleDocument): ValidationIssue[] {
     byWeek.set(session.weekNumber, list);
     const orders = session.blocks.map((block) => block.order);
     if (orders.some((order, index) => order !== index + 1)) issues.push({ path: `/sessions/${session.sessionId}/blocks`, message: "block order must be contiguous and start at 1" });
+    for (const block of session.blocks) {
+      if (blockIds.has(block.blockId)) issues.push({ path: `/sessions/${session.sessionId}/blocks/${block.blockId}`, message: `duplicate blockId ${block.blockId}` });
+      blockIds.add(block.blockId);
+      for (const item of block.items) {
+        if (exerciseIds.has(item.exerciseId)) issues.push({ path: `/sessions/${session.sessionId}/blocks/${block.blockId}/items/${item.exerciseId}`, message: `duplicate exerciseId ${item.exerciseId}` });
+        exerciseIds.add(item.exerciseId);
+      }
+    }
     if (session.kind === "strength") {
       if (session.mainLift) {
         const rirMatches = [...session.mainLift.prescription.matchAll(/(\d+(?:-\d+)?)\s*RIR/g)].map((match) => match[1]);

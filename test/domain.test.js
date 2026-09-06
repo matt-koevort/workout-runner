@@ -19,6 +19,18 @@ test("current migration is a valid fully expanded six-week cycle", () => {
   }
 });
 
+test("expanded sessions have unique stable block and exercise IDs", () => {
+  const cycle = buildCurrentCycle();
+  const blockIds = cycle.sessions.flatMap((session) => session.blocks.map((block) => block.blockId));
+  const exerciseIds = cycle.sessions.flatMap((session) => session.blocks.flatMap((block) => block.items.map((item) => item.exerciseId)));
+  assert.equal(new Set(blockIds).size, blockIds.length);
+  assert.equal(new Set(exerciseIds).size, exerciseIds.length);
+  assert.equal(validateCycle(cycle).valid, true);
+  const duplicate = structuredClone(cycle);
+  duplicate.sessions[0].blocks[3].blockId = duplicate.sessions[0].blocks[2].blockId;
+  assert.equal(validateCycle(duplicate).valid, false);
+});
+
 test("bench starts unrecorded and never invents a load", () => {
   const cycle = buildCurrentCycle();
   const bench = cycle.sessions[0].mainLift;

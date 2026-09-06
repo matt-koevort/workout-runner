@@ -17,7 +17,7 @@ function ex(
 }
 
 function block(sessionId: string, order: number, kind: WorkoutBlock["kind"], label: string, items: ExercisePrescription[], extra: Partial<WorkoutBlock> = {}): WorkoutBlock {
-  return { blockId: `${sessionId}-${kind}`, kind, label, order, items, ...extra };
+  return { blockId: `${sessionId}-${kind}-${order}`, kind, label, order, items, ...extra };
 }
 
 function preparationFor(name: string): string {
