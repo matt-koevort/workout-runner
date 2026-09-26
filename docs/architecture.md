@@ -64,3 +64,17 @@ npm run cli -- validate-log --input /tmp/results.json
 `package-cycle` emits a deterministic JSON bundle (`cycle.bundle.json`), the documented free/local equivalent of a zip phone bundle.
 
 All outputs are deterministic except `exportedAt` in a bundle, which is fixed by the CLI's pack operation for reproducible fixtures and can be replaced by the UI at export time.
+
+## Runner progression and performed rows
+
+The local optional `activeWeek` records the week selected by starting or skipping a session. A draft takes priority. Older installations and restored bundles infer the week from the latest timestamped result in the current cycle, falling back to Week 1. Browsing does not advance progress. Next Up searches the active week and later weeks before earlier unfinished sessions. Progress counts only explicit completed/skipped core sessions; it never creates skipped records for intervening sessions.
+
+`setLayoutVersion: 1` on drafts/results identifies an explicit performed-row array, including an empty array. Unmarked legacy rows were sparse edited values, so draft normalization and result resume pad them to at least the prescribed target and preserve higher numbered rows. Result JSON keeps schema version 1.0 with an optional additive layout field accepted by both validators. New exports need the updated runner/tooling; existing files remain importable. Completed records and their snapshots are not migrated or rewritten.
+
+Prior-performance lookup sorts completed occurrences by completion time before the draft start time, or now in preview. It excludes the current session and later positions in the same cycle. IDs and the connected comparison-exercise lineage match first, then normalized Unicode names with case, punctuation and whitespace folded. It uses actual result fields only. When an old record has no snapshot or matching cycle session, its completion timestamp is the available ordering evidence. Cross-cycle history can match by identity or name. Occurrences without any logged values do not hide an older logged occurrence.
+
+IndexedDB remains version 2. The state remains version 2 with optional fields; normalization recognizes legacy layouts directly. Unreadable originals are stored under `recovery-original` before a normalized state can replace them. Recovery export is a raw diagnostic record, not a validated bundle; normal backups remain the portable restore format. Local save failures show a persistent backup warning.
+
+The service worker precaches HTML, manifest, icon and the HTML's hashed CSS/JS assets before activation. Navigation tries the network, then uses the installed offline index. Cached assets stay within the app subpath. Activation removes only old Workout Runner shell caches and never touches IndexedDB.
+
+Run `npm test`, `npm run build`, `npm run build:web`, and `npm run privacy:scan` before deployment. The privacy scan checks public source and build output for credential signatures, private filesystem paths and serialized user documents. Synthetic fixtures stay in tests and runtime import files, never in public assets.

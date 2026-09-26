@@ -24,6 +24,7 @@ export interface SessionDraft {
   prescriptionSnapshot: WorkoutSession;
   startedAt: string;
   status: "in-progress" | "complete" | "skipped" | "abandoned";
+  setLayoutVersion?: 1;
   actuals: Record<string, SetActual[]>;
   focusedBlockId?: string;
   focusedExerciseId?: string;
@@ -37,6 +38,7 @@ export interface RunnerState {
   /** Persisted state format. Older installs may omit this and are migrated on read. */
   stateVersion: 2;
   cycle?: CycleDocument;
+  activeWeek?: number;
   results: ResultsDocument;
   draft?: SessionDraft;
   lastBackupAt?: string;

@@ -1,3 +1,4 @@
+import { restorePerformedRows } from "../app/sequence.js";
 import type { CycleBundle, ResultsDocument } from "../domain/types.js";
 import type { RunnerState } from "./types.js";
 import { emptyRunnerState } from "./types.js";
@@ -5,6 +6,7 @@ import { emptyRunnerState } from "./types.js";
 const DB_NAME = "workout-runner";
 const STORE = "state";
 const KEY = "singleton";
+const RECOVERY_KEY = "recovery-original";
 const DB_VERSION = 2;
 const READ_TIMEOUT_MS = 5_000;
 let memoryState: RunnerState | undefined;
@@ -71,6 +73,7 @@ export function normalizeRunnerState(raw: unknown): { state: RunnerState; migrat
       prescriptionSnapshot: clone(snapshot) as unknown as NonNullable<RunnerState["draft"]>["prescriptionSnapshot"],
       startedAt: typeof rawDraft.startedAt === "string" ? rawDraft.startedAt : new Date().toISOString(),
       status: rawDraft.status === "complete" || rawDraft.status === "skipped" || rawDraft.status === "abandoned" ? rawDraft.status : "in-progress",
+      setLayoutVersion: 1,
       actuals: isObject(rawDraft.actuals) ? clone(rawDraft.actuals) as NonNullable<RunnerState["draft"]>["actuals"] : {},
       focusedBlockId: typeof rawDraft.focusedBlockId === "string" ? rawDraft.focusedBlockId : undefined,
       focusedExerciseId: typeof rawDraft.focusedExerciseId === "string" ? rawDraft.focusedExerciseId : undefined,
@@ -84,6 +87,16 @@ export function normalizeRunnerState(raw: unknown): { state: RunnerState; migrat
     warnings.push("the saved in-progress workout was incomplete");
   }
 
+  if (state.draft && isObject(rawDraft) && rawDraft.setLayoutVersion !== 1) {
+    for (const item of state.draft.prescriptionSnapshot.blocks ?? []) for (const exercise of item.items ?? []) {
+      state.draft.actuals[exercise.exerciseId] = restorePerformedRows(exercise, state.draft.actuals[exercise.exerciseId]);
+    }
+    migrated = true;
+  }
+  if (state.draft && state.results.results.some(r => r.workoutId === state.draft?.workoutId && r.status !== "in-progress")) {
+    state.draft = undefined; migrated = true; warnings.push("a draft referred to a protected historical result");
+  }
+  state.activeWeek = typeof raw.activeWeek === "number" && Number.isInteger(raw.activeWeek) && raw.activeWeek > 0 ? raw.activeWeek : undefined;
   state.lastBackupAt = typeof raw.lastBackupAt === "string" ? raw.lastBackupAt : undefined;
   state.sessionsSinceBackup = typeof raw.sessionsSinceBackup === "number" && Number.isFinite(raw.sessionsSinceBackup) && raw.sessionsSinceBackup >= 0 ? raw.sessionsSinceBackup : 0;
   if (raw.stateVersion !== 2) migrated = true;
@@ -121,6 +134,15 @@ export async function loadStateDetailed(): Promise<LoadOutcome> {
     });
     db.close();
     const normalized = normalizeRunnerState(raw ?? memoryState ?? emptyRunnerState());
+    if (normalized.warning) {
+      const recoveryDb = await openDatabase();
+      await new Promise<void>((resolve, reject) => {
+        const tx = recoveryDb.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).put(raw, RECOVERY_KEY);
+        tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+      });
+      recoveryDb.close();
+    }
     if (normalized.migrated) {
       memoryState = normalized.state;
       await saveState(normalized.state);
@@ -151,8 +173,7 @@ export async function saveState(state: RunnerState): Promise<void> {
     });
     db.close();
   } catch {
-    // Keep the in-memory copy; the next visible backup/import action can recover
-    // the data without blocking the workout UI.
+    throw new Error("Local save failed. Export a backup before closing this app.");
   }
 }
 
@@ -164,3 +185,13 @@ export function stateToBundle(state: RunnerState): CycleBundle | undefined {
 }
 
 export function resultsOnly(state: RunnerState): ResultsDocument { return clone(state.results); }
+
+/** Retain damaged source data separately so recovery never depends on clearing storage. */
+export async function recoveryData(): Promise<unknown> {
+  if (!indexedDbAvailable()) return undefined;
+  const db = await openDatabase();
+  try { return await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly"); const request = tx.objectStore(STORE).get(RECOVERY_KEY);
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  }); } finally { db.close(); }
+}

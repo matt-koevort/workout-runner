@@ -22,9 +22,9 @@ export function validateImport(value: unknown): ImportResult {
 export function applyImport(current: RunnerState, parsed: unknown): RunnerState {
   const imported = validateImport(parsed);
   const next: RunnerState = JSON.parse(JSON.stringify(current)) as RunnerState;
-  if (imported.kind === "cycle") { next.cycle = imported.value; next.draft = undefined; return next; }
+  if (imported.kind === "cycle") { next.cycle = imported.value; next.activeWeek = undefined; next.draft = undefined; return next; }
   if (imported.kind === "bundle") {
-    next.cycle = imported.value.cycle;
+    next.cycle = imported.value.cycle; next.activeWeek = undefined;
     const merged = mergeResults(next.results, imported.value.results);
     if (merged.conflicts.length) throw new ImportError(`Results conflict at same revision: ${merged.conflicts.join(", ")}`);
     next.results = merged.results;

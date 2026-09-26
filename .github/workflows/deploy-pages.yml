@@ -36,6 +36,9 @@ jobs:
       - name: Build web app
         run: npm run build:web
 
+      - name: Scan public source and assets for private data
+        run: npm run privacy:scan
+
       - name: Configure Pages
         uses: actions/configure-pages@v6
 

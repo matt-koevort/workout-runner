@@ -57,6 +57,7 @@
         "status": {"type": "string", "enum": ["in-progress", "complete", "skipped"]},
         "exercises": {"type": "array", "items": {"$ref": "#/$defs/exerciseResult"}},
         "prescriptionSnapshot": {"$ref": "https://workout-runner.local/schemas/cycle.schema.json#/$defs/session"},
+        "setLayoutVersion": {"const": 1},
         "actuals": {"type": "object", "additionalProperties": {"type": "array", "items": {"$ref": "#/$defs/loggedSet"}}},
         "notes": {"type": "array", "items": {"type": "string"}}
       }

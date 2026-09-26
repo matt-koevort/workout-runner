@@ -145,6 +145,7 @@ export interface WorkoutResult {
   /** Immutable session prescription captured when the workout was started. */
   prescriptionSnapshot?: WorkoutSession;
   /** Browser draft representation retained for safe round-tripping. */
+  setLayoutVersion?: 1;
   actuals?: Record<string, LoggedSet[]>;
   notes?: string[];
 }

@@ -90,7 +90,7 @@ export function validateResultsPortable(value: unknown): PortableValidationRepor
   for (const [index, result] of value.results.entries()) {
     const path = `/results/${index}`;
     if (!isObject(result)) { issues.push({ path, message: "result must be an object" }); continue; }
-    unknownKeys(result, ["workoutId", "cycleId", "sessionId", "revision", "cycleRevision", "startedAt", "completedAt", "status", "exercises", "prescriptionSnapshot", "actuals", "notes"], path, issues);
+    unknownKeys(result, ["workoutId", "cycleId", "sessionId", "revision", "cycleRevision", "startedAt", "completedAt", "status", "exercises", "prescriptionSnapshot", "actuals", "setLayoutVersion", "notes"], path, issues);
     if (typeof result.workoutId !== "string" || typeof result.cycleId !== "string" || typeof result.sessionId !== "string") issues.push({ path, message: "result identity is invalid" });
     else if (ids.has(result.workoutId)) issues.push({ path: `${path}/workoutId`, message: "duplicate workoutId" });
     else ids.add(result.workoutId);
@@ -104,6 +104,7 @@ export function validateResultsPortable(value: unknown): PortableValidationRepor
       if (typeof exercise.exerciseId !== "string" || typeof exercise.name !== "string" || !Array.isArray(exercise.sets)) issues.push({ path: exercisePath, message: "exercise result is invalid" });
       for (const [setIndex, set] of (exercise.sets ?? []).entries()) validateLoggedSetPortable(set, `${exercisePath}/sets/${setIndex}`, issues);
     }
+    if (result.setLayoutVersion !== undefined && result.setLayoutVersion !== 1) issues.push({ path: `${path}/setLayoutVersion`, message: "unsupported set layout" });
     if (result.actuals !== undefined) {
       if (!isObject(result.actuals)) issues.push({ path: `${path}/actuals`, message: "actuals must be an object" });
       else for (const [exerciseId, sets] of Object.entries(result.actuals)) {

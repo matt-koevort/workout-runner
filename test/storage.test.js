@@ -14,7 +14,7 @@ test("legacy persisted state is upgraded without losing cycle, results, draft or
       schemaVersion: "1.0",
       kind: "results",
       results: [{
-        workoutId: first.sessionId,
+        workoutId: `${first.sessionId}-historical`,
         cycleId: cycle.cycleId,
         sessionId: first.sessionId,
         revision: 2,
@@ -42,7 +42,7 @@ test("legacy persisted state is upgraded without losing cycle, results, draft or
   assert.equal(migrated.migrated, true);
   assert.equal(migrated.state.stateVersion, 2);
   assert.equal(migrated.state.cycle?.cycleId, cycle.cycleId);
-  assert.equal(migrated.state.results.results[0].workoutId, first.sessionId);
+  assert.equal(migrated.state.results.results[0].workoutId, `${first.sessionId}-historical`);
   assert.equal(migrated.state.results.results[0].legacyField, "kept for export compatibility");
   assert.equal(migrated.state.draft?.sessionId, first.sessionId);
   assert.deepEqual(migrated.state.draft?.collapsedBlocks, [first.blocks[0].blockId]);
