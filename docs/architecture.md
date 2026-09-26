@@ -75,6 +75,6 @@ Prior-performance lookup sorts completed occurrences by completion time before t
 
 IndexedDB remains version 2. The state remains version 2 with optional fields; normalization recognizes legacy layouts directly. Unreadable originals are stored under `recovery-original` before a normalized state can replace them. Recovery export is a raw diagnostic record, not a validated bundle; normal backups remain the portable restore format. Local save failures show a persistent backup warning.
 
-The service worker precaches HTML, manifest, icon and the HTML's hashed CSS/JS assets before activation. Navigation tries the network, then uses the installed offline index. Cached assets stay within the app subpath. Activation removes only old Workout Runner shell caches and never touches IndexedDB.
+The service worker precaches HTML, manifest, icon and the HTML's hashed CSS/JS assets before activation. Navigation tries the network, then uses the installed offline index. Cached assets stay within the app subpath. Matching ignores Vary headers for this same-origin static shell so Vite preview assets cached without an Origin header still match later CORS module requests. Activation removes only old Workout Runner shell caches and never touches IndexedDB.
 
 Run `npm test`, `npm run build`, `npm run build:web`, and `npm run privacy:scan` before deployment. The privacy scan checks public source and build output for credential signatures, private filesystem paths and serialized user documents. Synthetic fixtures stay in tests and runtime import files, never in public assets.

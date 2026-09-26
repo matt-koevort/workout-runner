@@ -1,5 +1,5 @@
 // Cache the complete shell during installation before replacing the previous worker.
-const CACHE = "workout-runner-shell-v8";
+const CACHE = "workout-runner-shell-v9";
 const BASE = new URL("./", self.registration.scope);
 const indexUrl = new URL("./index.html", BASE).href;
 self.addEventListener("install", event => {
@@ -24,9 +24,11 @@ self.addEventListener("fetch", event => {
     // Keep documents fresh so a new deployment never points at removed assets.
     if (event.request.mode === "navigate") {
       try { const response = await fetch(event.request); if (response.ok) { await cache.put(event.request, response.clone()); return response; } } catch { /* use the installed offline shell */ }
-      return await cache.match(indexUrl);
+      return await cache.match(indexUrl, {ignoreVary: true});
     }
-    const cached = await cache.match(event.request);
+    // Static same-origin shell responses can vary by Origin in Vite previews.
+    // Module requests carry different Origin headers than precache requests.
+    const cached = await cache.match(event.request, {ignoreVary: true});
     if (cached) return cached;
     const response = await fetch(event.request);
     if (response.ok) await cache.put(event.request, response.clone());
