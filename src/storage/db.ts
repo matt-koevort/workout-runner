@@ -10,6 +10,7 @@ const RECOVERY_KEY = "recovery-original";
 const DB_VERSION = 2;
 const READ_TIMEOUT_MS = 5_000;
 let memoryState: RunnerState | undefined;
+let pendingSave: Promise<void> = Promise.resolve();
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 
@@ -162,19 +163,25 @@ export async function saveState(state: RunnerState): Promise<void> {
   const next = clone({ ...state, stateVersion: 2 as const });
   memoryState = next;
   if (!indexedDbAvailable()) return;
-  try {
-    const db = await openDatabase();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(next, KEY);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error ?? new Error("Could not save local workout storage."));
-      tx.onabort = () => reject(tx.error ?? new Error("Could not save local workout storage."));
-    });
-    db.close();
-  } catch {
-    throw new Error("Local save failed. Export a backup before closing this app.");
-  }
+  // Input events can arrive while an earlier write is still opening the database.
+  // Serialize snapshots so an older edit can never overwrite a newer one.
+  const write = pendingSave.catch(() => undefined).then(async () => {
+    let db: IDBDatabase | undefined;
+    try {
+      db = await openDatabase();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db!.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).put(next, KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error ?? new Error("Could not save local workout storage."));
+        tx.onabort = () => reject(tx.error ?? new Error("Could not save local workout storage."));
+      });
+    } catch {
+      throw new Error("Local save failed. Export a backup before closing this app.");
+    } finally { db?.close(); }
+  });
+  pendingSave = write;
+  await write;
 }
 
 export async function clearState(): Promise<void> { memoryState = emptyRunnerState(); if (!indexedDbAvailable()) return; await saveState(memoryState); }

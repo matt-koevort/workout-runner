@@ -80,3 +80,5 @@ The service worker precaches HTML, manifest, icon and the HTML's hashed CSS/JS a
 Run `npm test`, `npm run build`, `npm run build:web`, and `npm run privacy:scan` before deployment. The privacy scan checks public source and build output for credential signatures, private filesystem paths and serialized user documents. Synthetic fixtures stay in tests and runtime import files, never in public assets.
 
 Each performed row has its own removal control. Removal retains all surviving actual fields and renumbers rows consecutively. The confirmation names the exercise and selected set. It does not change the prescription or completed history.
+
+Actual text fields save on input without requiring blur or a per-set completion action. Select fields save on change. Each input updates the draft immediately and queues a local IndexedDB snapshot in order; no debounce delay is used. Temporary incomplete numeric input retains the last valid saved value. Legacy set completion flags remain supported in stored data and export/import.

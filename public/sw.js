@@ -1,5 +1,5 @@
 // Cache the complete shell during installation before replacing the previous worker.
-const CACHE = "workout-runner-shell-v10";
+const CACHE = "workout-runner-shell-v11";
 const BASE = new URL("./", self.registration.scope);
 const indexUrl = new URL("./index.html", BASE).href;
 self.addEventListener("install", event => {
