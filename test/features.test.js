@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFixtureCycle } from './fixture-cycle.js';
-import { activeWeekFor, nextCoreSession, previousExerciseResult, formatActual, performedRows, restorePerformedRows, setHasActual } from '../dist/src/app/sequence.js';
+import { activeWeekFor, nextCoreSession, previousExerciseResult, formatActual, performedRows, restorePerformedRows, removePerformedRow, setHasActual } from '../dist/src/app/sequence.js';
 import { normalizeRunnerState, stateToBundle } from '../dist/src/storage/db.js';
 import { applyImport } from '../dist/src/app/imports.js';
 import { emptyRunnerState } from '../dist/src/storage/types.js';
@@ -72,4 +72,18 @@ test('completion ordering compares instants across timezone offsets',()=>{
  for(const [r,reps] of [[a,1],[b,2]])r.exercises=[{exerciseId:item.exerciseId,name:item.name,sets:[{setNumber:1,reps}]}];
  assert.equal(previousExerciseResult({results:[a,b]},w3,item.exerciseId,'2026-09-01T11:00:00Z',cycle).sets[0].reps,2);
  assert.equal(activeWeekFor(cycle,{results:[a,b]}),2);
+});
+
+test('specific row removal preserves other actuals, renumbers rows and round-trips',()=>{
+ const rows=[{setNumber:1,reps:8,load:10},{setNumber:2,reps:0,note:'Remove this row'},{setNumber:3,reps:12,unit:'lb',loadBasis:'per-side',note:'Keep this row',completed:true}];
+ const original=structuredClone(rows);
+ const removed=removePerformedRow(rows,2);
+ assert.deepEqual(removed,[rows[0],{...rows[2],setNumber:2}]);assert.deepEqual(rows,original);
+ assert.equal(setHasActual(rows[1]),true);
+ assert.deepEqual(removePerformedRow(rows,1),[{...rows[1],setNumber:1},{...rows[2],setNumber:2}]);
+ assert.deepEqual(removePerformedRow([{setNumber:1}],1),[]);
+ assert.deepEqual(removePerformedRow(rows,99),rows);
+ const r={...result(w3),setLayoutVersion:1,actuals:{[item.exerciseId]:removed},exercises:[{exerciseId:item.exerciseId,name:item.name,sets:removed}]};
+ const state={...emptyRunnerState(),cycle,results:{schemaVersion:'1.0',kind:'results',results:[r]}};
+ assert.deepEqual(applyImport(emptyRunnerState(),stateToBundle(state)).results.results[0],r);
 });

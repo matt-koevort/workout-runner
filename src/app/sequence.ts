@@ -105,3 +105,9 @@ export function restorePerformedRows(item: ExercisePrescription, rows?: LoggedSe
   const count = Math.max(item.sets ?? 1, ...((rows ?? []).map(s => s.setNumber)));
   return Array.from({length: count}, (_, i) => rows?.find(s => s.setNumber === i + 1) ?? {setNumber: i + 1});
 }
+
+/** Remove exactly the selected performed row; retain every surviving actual field. */
+export function removePerformedRow(rows: LoggedSet[], setNumber: number): LoggedSet[] {
+  if (!rows.some(row => row.setNumber === setNumber)) return rows;
+  return rows.filter(row => row.setNumber !== setNumber).map((row, index) => ({...row, setNumber: index + 1}));
+}

@@ -78,3 +78,5 @@ IndexedDB remains version 2. The state remains version 2 with optional fields; n
 The service worker precaches HTML, manifest, icon and the HTML's hashed CSS/JS assets before activation. Navigation tries the network, then uses the installed offline index. Cached assets stay within the app subpath. Matching ignores Vary headers for this same-origin static shell so Vite preview assets cached without an Origin header still match later CORS module requests. Activation removes only old Workout Runner shell caches and never touches IndexedDB.
 
 Run `npm test`, `npm run build`, `npm run build:web`, and `npm run privacy:scan` before deployment. The privacy scan checks public source and build output for credential signatures, private filesystem paths and serialized user documents. Synthetic fixtures stay in tests and runtime import files, never in public assets.
+
+Each performed row has its own removal control. Removal retains all surviving actual fields and renumbers rows consecutively. The confirmation names the exercise and selected set. It does not change the prescription or completed history.
